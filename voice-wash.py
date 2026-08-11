@@ -279,11 +279,41 @@ def _paraphrase_copilot(masked, model):
     return r.stdout.strip()
 
 
+def _paraphrase_moonshot(masked, model, budget):
+    """Direct Moonshot/Kimi API. Key from https://platform.kimi.ai (API keys page),
+    passed via MOONSHOT_API_KEY env var — never hardcode it. Base URL overridable
+    via MOONSHOT_BASE_URL (used by tests)."""
+    import os
+    key = os.environ.get('MOONSHOT_API_KEY')
+    if not key:
+        raise RuntimeError("MOONSHOT_API_KEY not set — create a key at https://platform.kimi.ai")
+    base = os.environ.get('MOONSHOT_BASE_URL', 'https://api.moonshot.ai/v1')
+    payload = json.dumps({
+        "model": model or "kimi-k3",
+        "messages": [{"role": "user", "content": PROMPT.format(text=masked)}],
+        "temperature": 0.4,
+        "max_tokens": budget * 2,  # headroom: reasoning tokens count too
+        "reasoning_effort": "low",  # paraphrase needs prose skill, not deep thought
+    }).encode()
+    req = urllib.request.Request(
+        base.rstrip('/') + "/chat/completions", data=payload,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=300) as r:
+        resp = json.loads(r.read())
+    choice = resp["choices"][0]
+    if choice.get("finish_reason") == "length":
+        return ""  # truncated — guardrail failure
+    return (choice["message"].get("content") or "").strip()
+
+
 def paraphrase(text, model, max_ratio=1.4, backend='ollama'):
     masked, mapping = mask_tokens(text)
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
     if backend == 'copilot':
         out = _paraphrase_copilot(masked, model)
+    elif backend == 'moonshot':
+        out = _paraphrase_moonshot(masked, model, budget)
     else:
         out = _paraphrase_ollama(masked, model, budget)
     if out.startswith('"') and out.endswith('"'):
@@ -455,11 +485,12 @@ def main():
     ap.add_argument('--code', action='store_true',
                     help='code mode: wash comments only, editing files in place')
     ap.add_argument('--check', help='command run after each file in code mode; file reverted on failure')
-    ap.add_argument('--backend', choices=['ollama', 'copilot'], default='ollama',
-                    help="ollama = fully local; copilot = Kimi K3 etc. via Copilot CLI "
-                         "(stronger, not an Anthropic model, but text leaves the machine)")
+    ap.add_argument('--backend', choices=['ollama', 'copilot', 'moonshot'], default='ollama',
+                    help="ollama = fully local; copilot = via Copilot CLI (uses AI credits); "
+                         "moonshot = direct Kimi API, cheapest at volume (MOONSHOT_API_KEY)")
     ap.add_argument('--model', default=None,
-                    help='ollama: e.g. qwen3:8b (default llama3.2:1b); copilot: optional model id')
+                    help='ollama: e.g. qwen3:8b (default llama3.2:1b); copilot: optional '
+                         'model id; moonshot: default kimi-k3')
     ap.add_argument('--yes', action='store_true', help='accept all hunks without prompting')
     ap.add_argument('--out', help='output path (default: <file>.washed.md; markdown mode only)')
     ap.add_argument('--in-place', action='store_true')

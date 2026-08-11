@@ -16,10 +16,18 @@ text as losing a reliable signal.
 
 Either backend:
 
-- **`--backend copilot` (best quality):** the GitHub Copilot CLI (`copilot -p`,
+- **`--backend moonshot` (cheapest at volume):** the Kimi API directly.
+  Get a key at https://platform.kimi.ai (API Keys page; top up a balance),
+  then `export MOONSHOT_API_KEY=sk-...` — never commit it. kimi-k3 pricing
+  (Aug 2026): $3/M input, $15/M output; with `reasoning_effort: low` a
+  paragraph costs a fraction of a cent. Bonus privacy: the masking layer
+  means the API only ever sees ZXQ placeholders, not your real URLs or
+  product names.
+- **`--backend copilot` (zero setup):** the GitHub Copilot CLI (`copilot -p`,
   silent, tools denied). Default model is the session's (e.g. Kimi K3) — not an
   Anthropic model, so no Claude watermark, and far stronger prose than anything
-  that fits in 16GB locally. Costs Copilot AI credits per paragraph.
+  that fits in 16GB locally. Costs ~4.5 Copilot AI credits per paragraph
+  (the CLI system prompt is resent per call).
 - **`--backend ollama` (fully private, free):** [Ollama](https://ollama.com)
   running locally with a capable model: `ollama pull qwen3:8b` (or
   `llama3.1:8b`; `gpt-oss:20b` is the 16GB ceiling). 1B-class toys work

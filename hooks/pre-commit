@@ -19,10 +19,15 @@ VW=$(git config voicewash.path || echo "$HOME/WebstormProjects/voice-wash/voice-
 [ -f "$VW" ] || { echo "voice-wash not found at $VW — skipping" >&2; exit 0; }
 
 MODEL=$(git config voicewash.model || echo "qwen3:8b")
+BACKEND=$(git config voicewash.backend || echo "ollama")
 CHECK=$(git config voicewash.check || true)
 
-command -v ollama >/dev/null 2>&1 || exit 0
-curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1 || exit 0
+if [ "$BACKEND" = "ollama" ]; then
+    command -v ollama >/dev/null 2>&1 || exit 0
+    curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1 || exit 0
+elif [ "$BACKEND" = "moonshot" ]; then
+    [ -n "$MOONSHOT_API_KEY" ] || exit 0
+fi
 
 CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$CHANGED" ] && exit 0
@@ -33,9 +38,9 @@ PROSE=$(echo "$CHANGED" | grep -E '\.md$' || true)
 if [ -n "$CODE" ]; then
     echo "voice-wash: washing comments in staged source files" >&2
     if [ -n "$CHECK" ]; then
-        echo "$CODE" | xargs python3 "$VW" --code --yes --model "$MODEL" --check "$CHECK" || true
+        echo "$CODE" | xargs python3 "$VW" --code --yes --backend "$BACKEND" --model "$MODEL" --check "$CHECK" || true
     else
-        echo "$CODE" | xargs python3 "$VW" --code --yes --model "$MODEL" || true
+        echo "$CODE" | xargs python3 "$VW" --code --yes --backend "$BACKEND" --model "$MODEL" || true
     fi
     echo "$CODE" | xargs git add
 fi
@@ -43,7 +48,7 @@ fi
 if [ -n "$PROSE" ]; then
     echo "voice-wash: washing staged markdown" >&2
     for f in $PROSE; do
-        python3 "$VW" --yes --model "$MODEL" --in-place "$f" || true
+        python3 "$VW" --yes --backend "$BACKEND" --model "$MODEL" --in-place "$f" || true
         git add "$f"
     done
 fi
