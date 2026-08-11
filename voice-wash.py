@@ -249,6 +249,22 @@ SPACED_HYPHEN_RE = re.compile(r'(?<=\S) - (?=\S)')
 SENTENCE_END_RE = re.compile(r'(?<![.!?])([.!?]) +(?=\S)')
 
 
+def reflow_like(text, source):
+    """Hard-wrap washed text to match the source block's house style: same max
+    line width as the source, continuation lines indented two spaces."""
+    import textwrap
+    lines = [l for l in source.split('\n') if l.strip()]
+    width = max((len(l) for l in lines), default=0)
+    if width < 60:  # source wasn't hard-wrapped
+        return text
+    width = min(width, 120)
+    flat = ' '.join(text.split())
+    out = textwrap.wrap(flat, width=width, initial_indent='',
+                        subsequent_indent='  ', break_long_words=False,
+                        break_on_hyphens=False)
+    return '\n'.join(out)
+
+
 def normalize_style(text):
     """Author's house style, applied deterministically so it never depends on
     the model obeying: semicolons instead of dashes/hyphen parentheticals,
@@ -400,6 +416,38 @@ def rank_candidates(src, cands):
     return best
 
 
+LOCAL_JUDGE_PROMPT = """Score this paraphrase 1-10 for sounding like a British software developer wrote it naturally. Criteria: sentence rhythm variety, plain direct register, no AI-tell phrasing, no grammar slips, meaning preserved. Reply with ONLY the integer.
+
+Source: {src}
+
+Paraphrase: {dst}"""
+
+
+def rank_candidates_judged(src, cands, model):
+    """Rank best-of-K candidates using the local model as judge (free on ollama).
+    Falls back to heuristic ranking for any candidate the judge won't score."""
+    best, best_score = None, -1
+    for c in cands:
+        payload = json.dumps({
+            "model": model,
+            "prompt": LOCAL_JUDGE_PROMPT.format(src=src, dst=c),
+            "stream": False, "think": False,
+            "options": {"temperature": 0, "num_predict": 8},
+        }).encode()
+        req = urllib.request.Request(OLLAMA_URL, data=payload,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                resp = json.loads(r.read())
+            m = re.search(r'\d+', resp["response"])
+            score = int(m.group(0)) if m else -1
+        except Exception:
+            score = -1
+        if score > best_score:
+            best, best_score = c, score
+    return best if best_score > 0 else rank_candidates(src, cands)
+
+
 def _generate_once(masked, model, budget, backend, temperature=None):
     if backend == 'copilot':
         return _paraphrase_copilot(masked, model)
@@ -408,7 +456,8 @@ def _generate_once(masked, model, budget, backend, temperature=None):
     return _paraphrase_ollama(masked, model, budget, temperature=temperature)
 
 
-def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, bestof=1):
+def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, bestof=1,
+               judge_rank=False):
     masked, mapping = mask_tokens(text)
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
     temps = [None] if bestof <= 1 else [0.4, 0.7, 0.9, 1.0, 0.55][:bestof]
@@ -430,7 +479,12 @@ def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, besto
         out = normalize_style(out)
         if out and not check_guardrail(text, out, max_ratio=max_ratio):
             cands.append(out)
-    out = rank_candidates(text, cands) if cands else ''
+    if not cands:
+        out = ''
+    elif judge_rank and backend == 'ollama' and len(cands) > 1:
+        out = rank_candidates_judged(text, cands, model)
+    else:
+        out = rank_candidates(text, cands)
     if polish and out:
         cand = normalize_style(_polish(out, model, backend))
         if cand and not check_guardrail(text, cand, max_ratio=max_ratio):
@@ -449,6 +503,9 @@ LINE_COMMENT_RE = {
     '.rs': re.compile(r'^(?P<indent>[ \t]*)//[ /!]?[ \t]?(?P<body>.*)$'),
 }
 BLOCK_COMMENT_RE = re.compile(r'/\*(?P<body>.*?)\*/', re.S)
+PY_DOCSTRING_RE = re.compile(
+    r'^(?P<indent>[ \t]*)(?P<q>"""|\'\'\')(?P<body>.*?)(?P=q)[ \t]*$',
+    re.S | re.M)
 CODE_MIN_WORDS = 8
 
 
@@ -486,6 +543,20 @@ def extract_comment_blocks(text, ext):
             spans.append((m.start(), m.end(),
                           lambda new, p=prefix: _rebuild_block(p, new),
                           _block_body_text(body)))
+    if ext == '.py':
+        for m in PY_DOCSTRING_RE.finditer(text):
+            if any(s <= m.start() < e for s, e, _, _ in spans):
+                continue
+            indent, q = m.group('indent'), m.group('q')
+            body = m.group('body').strip()
+            if not body or len(body.split()) < 4:
+                continue
+
+            def _rebuild_doc(new, i=indent, q=q):
+                inner = '\n'.join(f"{i}  {l}" for l in new.split('\n'))
+                return f"{i}{q}\n{inner}\n{i}{q}"
+
+            spans.append((m.start(), m.end(), _rebuild_doc, body))
     spans.sort(key=lambda s: s[0])
     return spans
 
@@ -653,7 +724,7 @@ def main():
                 break
             missing = check_guardrail(orig, cand)
             if not missing:
-                dst = cand
+                dst = reflow_like(cand, orig)  # match the file's hard-wrap style
                 break
             retrying = attempt < args.retries - 1
             print(f"[{n}/{len(washable)}] guardrail: dropped {missing[:6]}"

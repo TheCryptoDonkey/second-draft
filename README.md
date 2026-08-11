@@ -80,6 +80,18 @@ itself: novelty 0.80, judge 8.0):
 | gemma3:27b --bestof 3 | 4/4 | 0.93 | 5.8 |
 | llama3.3:70b (64GB host) | 0/4 | timed out | — |
 
+Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose):
+
+| config | guardrail | novelty | judge |
+|---|---|---|---|
+| qwen3:32b plain | 8/8 | 0.79 | 7.5 |
+| qwen3:32b --bestof 3 | 8/8 | 0.83 | **7.8** |
+| qwen3:32b --bestof 3 (judge-ranked) | 8/8 | 0.83 | 7.8 |
+| qwen3:32b --bestof 5 (judge-ranked) | 8/8 | 0.80 | 7.6 |
+
+best-of-3 heuristic ranking remains the ceiling; local self-judging adds
+nothing and wider sampling (bestof5) invites outliers.
+
 Takeaways: best-of-K sampling is the winning lever (nearly closes the novelty
 gap to K3); the polish pass *flattens* voice — judge score drops. gemma3:27b
 over-rewrites (novelty 0.93 vs K3's 0.80) but the voice suffers; llama3.3:70b
