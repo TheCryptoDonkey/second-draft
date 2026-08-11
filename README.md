@@ -68,6 +68,11 @@ Hooks are non-interactive so it runs `--yes` — the guardrails + `--check` are
 the safety net. Skip one commit with `VOICE_WASH=0 git commit ...`.
 If Ollama isn't running, the hook silently passes.
 
+Note: if you set a global `core.hooksPath` (check with
+`git config --show-origin core.hooksPath`), git ignores `.git/hooks/` entirely
+and the symlink will never fire — your global hook must chain to the repo-local
+hook (`"$GIT_DIR/hooks/pre-commit"` at its end) for this to run.
+
 ## Honest limitations
 
 - Detection is impossible locally; this tool assumes marked input and destroys
