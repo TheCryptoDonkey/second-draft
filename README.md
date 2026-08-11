@@ -78,11 +78,15 @@ itself: novelty 0.80, judge 8.0):
 | qwen3:32b --bestof 3 --polish | 4/4 | 0.79 | 6.8 |
 | gemma3:27b plain | 3/4 | 0.68 | 4.2 |
 | gemma3:27b --bestof 3 | 4/4 | 0.93 | 5.8 |
+| llama3.3:70b (64GB host) | 0/4 | timed out | — |
 
 Takeaways: best-of-K sampling is the winning lever (nearly closes the novelty
 gap to K3); the polish pass *flattens* voice — judge score drops. gemma3:27b
-over-rewrites (novelty 0.93 vs K3's 0.80) but the voice suffers; qwen3:32b
-wins on taste. Recommended local recipe:
+over-rewrites (novelty 0.93 vs K3's 0.80) but the voice suffers; llama3.3:70b
+thrashes a 64GB host into the compressor and never finished a generation
+(removed; 42GB of weights needs more headroom than 64GB total RAM).
+qwen3:32b wins on taste AND fits comfortably — it is the hardware ceiling
+that matters, and it is also the quality winner. Recommended local recipe:
 `--backend ollama --model qwen3:32b --bestof 3`.
 
 ## Guardrails (every hunk, both modes)
