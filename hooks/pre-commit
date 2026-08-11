@@ -1,0 +1,51 @@
+#!/bin/sh
+# voice-wash pre-commit hook — wash AI-statistical watermarks out of staged
+# content BEFORE it lands in git history.
+#
+# Install in any repo:
+#   ln -s /path/to/voice-wash/hooks/pre-commit .git/hooks/pre-commit
+#   git config voicewash.path /path/to/voice-wash/voice-wash.py
+#   git config voicewash.model qwen3:8b          # strongly recommended over 1B toys
+#   git config voicewash.check "npm test"        # repo's own gate; file reverts on red
+#
+# Skip a single commit:  VOICE_WASH=0 git commit ...
+# Hooks are non-interactive, so this runs --yes: every hunk is auto-accepted IF
+# it passes the guardrails (protected tokens, length band, prompt-leak check)
+# and the --check command. Anything failing keeps/reverts to the original.
+
+[ "$VOICE_WASH" = "0" ] && exit 0
+
+VW=$(git config voicewash.path || echo "$HOME/WebstormProjects/voice-wash/voice-wash.py")
+[ -f "$VW" ] || { echo "voice-wash not found at $VW — skipping" >&2; exit 0; }
+
+MODEL=$(git config voicewash.model || echo "qwen3:8b")
+CHECK=$(git config voicewash.check || true)
+
+command -v ollama >/dev/null 2>&1 || exit 0
+curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1 || exit 0
+
+CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$CHANGED" ] && exit 0
+
+CODE=$(echo "$CHANGED" | grep -E '\.(mjs|js|ts|py|go|rs)$' || true)
+PROSE=$(echo "$CHANGED" | grep -E '\.md$' || true)
+
+if [ -n "$CODE" ]; then
+    echo "voice-wash: washing comments in staged source files" >&2
+    if [ -n "$CHECK" ]; then
+        echo "$CODE" | xargs python3 "$VW" --code --yes --model "$MODEL" --check "$CHECK" || true
+    else
+        echo "$CODE" | xargs python3 "$VW" --code --yes --model "$MODEL" || true
+    fi
+    echo "$CODE" | xargs git add
+fi
+
+if [ -n "$PROSE" ]; then
+    echo "voice-wash: washing staged markdown" >&2
+    for f in $PROSE; do
+        python3 "$VW" --yes --model "$MODEL" --in-place "$f" || true
+        git add "$f"
+    done
+fi
+
+exit 0
