@@ -43,10 +43,14 @@ import urllib.request
 OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/") + "/api/generate"
 MIN_WORDS = 15
 
-PROMPT = """Rewrite the passage below as natural human prose in British English.
+PROMPT = """Rewrite the passage below as natural human prose by a British software developer.
 
 Voice rules:
 - British spellings: colour, organise, behaviour, programme (unless quoting code).
+- Sound like a developer writing plainly: direct, technical, no marketing gloss.
+- Two spaces after every full stop.
+- Use semicolons where they earn their place; do not force them.
+- NEVER use em-dashes or en-dashes anywhere; use " - " sparingly or restructure the sentence.
 - Contractions are fine. Plain words over grand ones.
 - Vary sentence length; mix short punchy sentences with longer ones.
 - NEVER use these AI tells: delve, furthermore, moreover, additionally, crucial, pivotal, vibrant, tapestry, testament, underscore, "it's worth noting", "it is important to note", "in today's", "not only ... but also", "plays a key role", "plays a vital role", "in conclusion", "navigate the complexities", "in the ever-evolving".
@@ -221,6 +225,20 @@ def style_violations(dst, src=''):
     return problems
 
 
+DASH_RE = re.compile(r'[—–―−]')
+# sentence-final punctuation followed by space(s); the lookbehind keeps the
+# final dot of an ellipsis ("... next") from being treated as a sentence end
+SENTENCE_END_RE = re.compile(r'(?<![.!?])([.!?]) +(?=\S)')
+
+
+def normalize_style(text):
+    """Author's house style, applied deterministically so it never depends on
+    the model obeying: no em/en-dashes anywhere, two spaces after sentence ends."""
+    text = DASH_RE.sub('-', text)
+    text = SENTENCE_END_RE.sub(r'\1  ', text)
+    return text
+
+
 def check_guardrail(src, dst, max_ratio=1.4):
     if not dst:
         return ['<empty output>']
@@ -338,7 +356,7 @@ def paraphrase(text, model, max_ratio=1.4, backend='ollama'):
         suffix = norm_out[end:].strip()
         if len(suffix.split()) > 5:
             out = norm_out[:end]
-    return out
+    return normalize_style(out)
 
 
 # --- code mode: comment extraction ----------------------------------------
