@@ -58,6 +58,19 @@ Voice rules:
 - Keep the meaning identical. Keep every URL, number, date, name and technical term EXACTLY as written. Do not add or remove facts.
 - Output ONLY the rewritten passage. No preamble, no commentary.
 
+Structure rules (this is what separates human prose from a thesaurus pass):
+- Do NOT mirror the source sentence boundaries. Merge short sentences, split long ones, reorder clauses.
+- Use plain spoken idioms where they fit ("out of thin air", "falls over", "the floor is").
+- If a sentence in your rewrite starts the same way as the source sentence, rewrite it again.
+
+Two examples of the target voice:
+
+SOURCE: Peer-assisted HLS is an established technique; viewers share segments over WebRTC so the origin feeds only the crowd's edge. It needs rendezvous infrastructure, because peers cannot find each other from nothing.
+REWRITE: Peer-assisted HLS is a well-established technique.  Viewers share segments with each other over WebRTC, so the origin only has to feed the edge of the crowd.  It does need rendezvous infrastructure, since peers can't find each other out of thin air.
+
+SOURCE: The platform cuts the stream, or the audience turns up in numbers and flattens it. From the streamer's side, success and censorship look identical.
+REWRITE: The platform pulls the stream, or the audience shows up in force and flattens it instead.  From where the streamer sits, success and censorship look exactly the same.
+
 Passage:
 {text}"""
 
@@ -243,6 +256,9 @@ def normalize_style(text):
     text = DASH_RE.sub('; ', text)
     text = SPACED_HYPHEN_RE.sub('; ', text)
     text = SENTENCE_END_RE.sub(r'\1  ', text)
+    # ASCII only: straight quotes/apostrophes (the drafts are 100% ASCII)
+    for a, b in (('’', "'"), ('‘', "'"), ('“', '"'), ('”', '"')):
+        text = text.replace(a, b)
     return text
 
 
@@ -284,10 +300,10 @@ def unmask_tokens(text, mapping):
     return text
 
 
-def _paraphrase_ollama(masked, model, budget):
+def _paraphrase_ollama(masked, model, budget, prompt=None):
     payload = json.dumps({
         "model": model,
-        "prompt": PROMPT.format(text=masked),
+        "prompt": (prompt or PROMPT).format(text=masked),
         "stream": False,
         "think": False,
         "options": {"temperature": 0.4, "num_predict": budget},
@@ -301,11 +317,11 @@ def _paraphrase_ollama(masked, model, budget):
     return resp["response"].strip()
 
 
-def _paraphrase_copilot(masked, model):
+def _paraphrase_copilot(masked, model, prompt=None):
     """Kimi K3 (or any configured model) via the Copilot CLI: not an Anthropic
     model, so no EU-AI-Act Claude watermark; far stronger than local 1-8B."""
     import subprocess
-    cmd = ["copilot", "-p", PROMPT.format(text=masked), "--deny-tool", "-s"]
+    cmd = ["copilot", "-p", (prompt or PROMPT).format(text=masked), "--deny-tool", "-s"]
     if model:
         cmd += ["--model", model]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -314,7 +330,7 @@ def _paraphrase_copilot(masked, model):
     return r.stdout.strip()
 
 
-def _paraphrase_moonshot(masked, model, budget):
+def _paraphrase_moonshot(masked, model, budget, prompt=None):
     """Direct Moonshot/Kimi API. Key from https://platform.kimi.ai (API keys page),
     passed via MOONSHOT_API_KEY env var — never hardcode it. Base URL overridable
     via MOONSHOT_BASE_URL (used by tests)."""
@@ -325,7 +341,7 @@ def _paraphrase_moonshot(masked, model, budget):
     base = os.environ.get('MOONSHOT_BASE_URL', 'https://api.moonshot.ai/v1')
     payload = json.dumps({
         "model": model or "kimi-k3",
-        "messages": [{"role": "user", "content": PROMPT.format(text=masked)}],
+        "messages": [{"role": "user", "content": (prompt or PROMPT).format(text=masked)}],
         "temperature": 0.4,
         "max_tokens": budget * 2,  # headroom: reasoning tokens count too
         "reasoning_effort": "low",  # paraphrase needs prose skill, not deep thought
@@ -342,7 +358,26 @@ def _paraphrase_moonshot(masked, model, budget):
     return (choice["message"].get("content") or "").strip()
 
 
-def paraphrase(text, model, max_ratio=1.4, backend='ollama'):
+POLISH_PROMPT = """You are a subeditor with a red pen.  The passage below is a machine paraphrase.  Fix anything that sounds translated, flat, stiff or machine-written: grammar slips, wrong articles, lifeless word order.  Keep every fact, URL, number, name and technical term EXACTLY.  British English, software developer's voice, two spaces after full stops, semicolons preferred over dashes, no em-dashes, no AI-tell phrases.  Output ONLY the polished passage.
+
+Passage:
+{text}"""
+
+
+def _polish(text, model, backend):
+    masked, mapping = mask_tokens(text)
+    if backend == 'copilot':
+        out = _paraphrase_copilot(masked, model, prompt=POLISH_PROMPT)
+    elif backend == 'moonshot':
+        out = _paraphrase_moonshot(masked, model, len(text.split()) * 4 + 40,
+                                   prompt=POLISH_PROMPT)
+    else:
+        out = _paraphrase_ollama(masked, model, len(text.split()) * 4 + 40,
+                                 prompt=POLISH_PROMPT)
+    return unmask_tokens(out, mapping)
+
+
+def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False):
     masked, mapping = mask_tokens(text)
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
     if backend == 'copilot':
@@ -363,7 +398,12 @@ def paraphrase(text, model, max_ratio=1.4, backend='ollama'):
         suffix = norm_out[end:].strip()
         if len(suffix.split()) > 5:
             out = norm_out[:end]
-    return normalize_style(out)
+    out = normalize_style(out)
+    if polish and out:
+        cand = normalize_style(_polish(out, model, backend))
+        if cand and not check_guardrail(text, cand, max_ratio=max_ratio):
+            out = cand
+    return out
 
 
 # --- code mode: comment extraction ----------------------------------------
@@ -445,7 +485,7 @@ def _rebuild_block(orig, new):
     return f"/*\n{inner}\n */"
 
 
-def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama'):
+def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama', polish=False):
     """Wash comment blocks in one source file. Returns 'washed'|'unchanged'|'reverted'."""
     ext = '.' + path.rsplit('.', 1)[-1] if '.' in path else ''
     src = open(path).read()
@@ -458,7 +498,7 @@ def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='oll
         dst = None
         for attempt in range(retries):
             try:
-                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend)
+                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend, polish=polish)
             except Exception as e:
                 print(f"  paraphrase error: {e}", file=sys.stderr)
                 break
@@ -530,6 +570,8 @@ def main():
     ap.add_argument('--out', help='output path (default: <file>.washed.md; markdown mode only)')
     ap.add_argument('--in-place', action='store_true')
     ap.add_argument('--min-words', type=int, default=None)
+    ap.add_argument('--polish', action='store_true',
+                    help='second subeditor pass per hunk (slower, better voice)')
     ap.add_argument('--retries', type=int, default=3,
                     help='paraphrase attempts per paragraph before keeping original')
     args = ap.parse_args()
@@ -556,7 +598,7 @@ def main():
             print(f"washing {p} ...", file=sys.stderr)
             stats[wash_code_file(p, args.model, args.retries, args.yes,
                                  args.check, args.min_words or CODE_MIN_WORDS,
-                                 args.backend)] += 1
+                                 args.backend, args.polish)] += 1
         print(f"\n{stats}", file=sys.stderr)
         return
 
@@ -571,7 +613,7 @@ def main():
         dst = None
         for attempt in range(args.retries):
             try:
-                cand = paraphrase(orig, args.model, backend=args.backend)
+                cand = paraphrase(orig, args.model, backend=args.backend, polish=args.polish)
             except Exception as e:
                 print(f"[{n}/{len(washable)}] paraphrase error: {e}", file=sys.stderr)
                 break
