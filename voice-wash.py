@@ -49,8 +49,8 @@ Voice rules:
 - British spellings: colour, organise, behaviour, programme (unless quoting code).
 - Sound like a developer writing plainly: direct, technical, no marketing gloss.
 - Two spaces after every full stop.
-- Use semicolons where they earn their place; do not force them.
-- NEVER use em-dashes or en-dashes anywhere; use " - " sparingly or restructure the sentence.
+- Prefer semicolons over dashes; use them wherever a dash parenthetical would go.
+- NEVER use em-dashes or en-dashes anywhere, and avoid " - " hyphen parentheticals; use a semicolon or restructure the sentence.
 - Contractions are fine. Plain words over grand ones.
 - Vary sentence length; mix short punchy sentences with longer ones.
 - NEVER use these AI tells: delve, furthermore, moreover, additionally, crucial, pivotal, vibrant, tapestry, testament, underscore, "it's worth noting", "it is important to note", "in today's", "not only ... but also", "plays a key role", "plays a vital role", "in conclusion", "navigate the complexities", "in the ever-evolving".
@@ -225,7 +225,12 @@ def style_violations(dst, src=''):
     return problems
 
 
-DASH_RE = re.compile(r'[—–―−]')
+# house style: semicolons instead of dashes. Spaced and unspaced em/en-dashes
+# become "; "; so do spaced-hyphen parentheticals (" - " mid-sentence), while
+# hyphens inside words/ranges (M1-M3, 0.75-0.82s) and line-leading list
+# markers are left alone.
+DASH_RE = re.compile(r'\s*[—–―−]\s*')
+SPACED_HYPHEN_RE = re.compile(r'(?<=\S) - (?=\S)')
 # sentence-final punctuation followed by space(s); the lookbehind keeps the
 # final dot of an ellipsis ("... next") from being treated as a sentence end
 SENTENCE_END_RE = re.compile(r'(?<![.!?])([.!?]) +(?=\S)')
@@ -233,8 +238,10 @@ SENTENCE_END_RE = re.compile(r'(?<![.!?])([.!?]) +(?=\S)')
 
 def normalize_style(text):
     """Author's house style, applied deterministically so it never depends on
-    the model obeying: no em/en-dashes anywhere, two spaces after sentence ends."""
-    text = DASH_RE.sub('-', text)
+    the model obeying: semicolons instead of dashes/hyphen parentheticals,
+    two spaces after sentence ends."""
+    text = DASH_RE.sub('; ', text)
+    text = SPACED_HYPHEN_RE.sub('; ', text)
     text = SENTENCE_END_RE.sub(r'\1  ', text)
     return text
 
