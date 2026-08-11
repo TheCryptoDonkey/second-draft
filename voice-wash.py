@@ -300,13 +300,14 @@ def unmask_tokens(text, mapping):
     return text
 
 
-def _paraphrase_ollama(masked, model, budget, prompt=None):
+def _paraphrase_ollama(masked, model, budget, prompt=None, temperature=None):
     payload = json.dumps({
         "model": model,
         "prompt": (prompt or PROMPT).format(text=masked),
         "stream": False,
         "think": False,
-        "options": {"temperature": 0.4, "num_predict": budget},
+        "options": {"temperature": 0.4 if temperature is None else temperature,
+                    "num_predict": budget},
     }).encode()
     req = urllib.request.Request(OLLAMA_URL, data=payload,
                                  headers={"Content-Type": "application/json"})
@@ -377,28 +378,59 @@ def _polish(text, model, backend):
     return unmask_tokens(out, mapping)
 
 
-def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False):
+def trigram_novelty(src, dst):
+    """1 - Jaccard overlap of word trigrams: how far the rewrite moved from the
+    source's phrasing. 0 = identical wording, 1 = no shared trigrams."""
+    def tri(s):
+        w = re.findall(r"[a-z']+", s.lower())
+        return {tuple(w[i:i+3]) for i in range(len(w) - 2)} or {tuple(w)}
+    a, b = tri(src), tri(dst)
+    return 1 - len(a & b) / len(a | b)
+
+
+def rank_candidates(src, cands):
+    """Heuristic ranking for best-of-K: reward structural novelty and house-style
+    markers, penalise length drift. Guardrail failures are filtered by caller."""
+    best, best_score = None, -1e9
+    for c in cands:
+        score = 2.0 * trigram_novelty(src, c)
+        score -= abs(len(c.split()) / max(1, len(src.split())) - 1.0)
+        score += 0.1 * c.count(';')
+        best, best_score = (c, score) if score > best_score else (best, best_score)
+    return best
+
+
+def _generate_once(masked, model, budget, backend, temperature=None):
+    if backend == 'copilot':
+        return _paraphrase_copilot(masked, model)
+    if backend == 'moonshot':
+        return _paraphrase_moonshot(masked, model, budget)
+    return _paraphrase_ollama(masked, model, budget, temperature=temperature)
+
+
+def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, bestof=1):
     masked, mapping = mask_tokens(text)
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
-    if backend == 'copilot':
-        out = _paraphrase_copilot(masked, model)
-    elif backend == 'moonshot':
-        out = _paraphrase_moonshot(masked, model, budget)
-    else:
-        out = _paraphrase_ollama(masked, model, budget)
-    if out.startswith('"') and out.endswith('"'):
-        out = out[1:-1]
-    out = unmask_tokens(out, mapping)
-    # small models sometimes echo the passage verbatim then ramble: cut there
-    norm = re.sub(r'\s+', ' ', text).strip()
-    norm_out = re.sub(r'\s+', ' ', out)
-    pos = norm_out.find(norm)
-    if pos >= 0:
-        end = pos + len(norm)
-        suffix = norm_out[end:].strip()
-        if len(suffix.split()) > 5:
-            out = norm_out[:end]
-    out = normalize_style(out)
+    temps = [None] if bestof <= 1 else [0.4, 0.7, 0.9, 1.0, 0.55][:bestof]
+    cands = []
+    for t in temps:
+        out = _generate_once(masked, model, budget, backend, temperature=t)
+        if out.startswith('"') and out.endswith('"'):
+            out = out[1:-1]
+        out = unmask_tokens(out, mapping)
+        # small models sometimes echo the passage verbatim then ramble: cut there
+        norm = re.sub(r'\s+', ' ', text).strip()
+        norm_out = re.sub(r'\s+', ' ', out)
+        pos = norm_out.find(norm)
+        if pos >= 0:
+            end = pos + len(norm)
+            suffix = norm_out[end:].strip()
+            if len(suffix.split()) > 5:
+                out = norm_out[:end]
+        out = normalize_style(out)
+        if out and not check_guardrail(text, out, max_ratio=max_ratio):
+            cands.append(out)
+    out = rank_candidates(text, cands) if cands else ''
     if polish and out:
         cand = normalize_style(_polish(out, model, backend))
         if cand and not check_guardrail(text, cand, max_ratio=max_ratio):
@@ -485,7 +517,7 @@ def _rebuild_block(orig, new):
     return f"/*\n{inner}\n */"
 
 
-def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama', polish=False):
+def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama', polish=False, bestof=1):
     """Wash comment blocks in one source file. Returns 'washed'|'unchanged'|'reverted'."""
     ext = '.' + path.rsplit('.', 1)[-1] if '.' in path else ''
     src = open(path).read()
@@ -498,7 +530,7 @@ def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='oll
         dst = None
         for attempt in range(retries):
             try:
-                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend, polish=polish)
+                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend, polish=polish, bestof=bestof)
             except Exception as e:
                 print(f"  paraphrase error: {e}", file=sys.stderr)
                 break
@@ -571,7 +603,9 @@ def main():
     ap.add_argument('--in-place', action='store_true')
     ap.add_argument('--min-words', type=int, default=None)
     ap.add_argument('--polish', action='store_true',
-                    help='second subeditor pass per hunk (slower, better voice)')
+                    help='second subeditor pass per hunk (bench: lowers judge score — off by default)')
+    ap.add_argument('--bestof', type=int, default=1,
+                    help='generate K candidates at varied temperatures, keep the best (bench: best config)')
     ap.add_argument('--retries', type=int, default=3,
                     help='paraphrase attempts per paragraph before keeping original')
     args = ap.parse_args()
@@ -598,7 +632,7 @@ def main():
             print(f"washing {p} ...", file=sys.stderr)
             stats[wash_code_file(p, args.model, args.retries, args.yes,
                                  args.check, args.min_words or CODE_MIN_WORDS,
-                                 args.backend, args.polish)] += 1
+                                 args.backend, args.polish, args.bestof)] += 1
         print(f"\n{stats}", file=sys.stderr)
         return
 
@@ -613,7 +647,7 @@ def main():
         dst = None
         for attempt in range(args.retries):
             try:
-                cand = paraphrase(orig, args.model, backend=args.backend, polish=args.polish)
+                cand = paraphrase(orig, args.model, backend=args.backend, polish=args.polish, bestof=args.bestof)
             except Exception as e:
                 print(f"[{n}/{len(washable)}] paraphrase error: {e}", file=sys.stderr)
                 break

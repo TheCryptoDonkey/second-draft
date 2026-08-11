@@ -65,6 +65,22 @@ The other de-marking layers are deterministic and out of scope here:
 run the repo formatter (prettier/rustfmt/gofmt) for formatting, and use
 compiler-checked renames (ts-morph, rust-analyzer) for identifiers.
 
+## Tuning (measured, not vibes — see bench.py)
+
+`bench.py` scores configs on guardrail pass-rate, trigram novelty vs source,
+and a K3 judge score. Current standings on the grant-prose test set (K3
+itself: novelty 0.80, judge 8.0):
+
+| config | guardrail | novelty | judge |
+|---|---|---|---|
+| qwen3:32b plain | 4/4 | 0.74 | 7.5 |
+| qwen3:32b --bestof 3 | 4/4 | 0.79 | **7.8** |
+| qwen3:32b --bestof 3 --polish | 4/4 | 0.79 | 6.8 |
+
+Takeaways: best-of-K sampling is the winning lever (nearly closes the novelty
+gap to K3); the polish pass *flattens* voice — judge score drops. Recommended
+local recipe: `--backend ollama --model qwen3:32b --bestof 3`.
+
 ## Guardrails (every hunk, both modes)
 
 - every URL, number, and proper-noun token must survive verbatim
