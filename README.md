@@ -32,7 +32,10 @@ Either backend:
   running locally with a capable model: `ollama pull qwen3:8b` (or
   `llama3.1:8b`; `gpt-oss:20b` is the 16GB ceiling). 1B-class toys work
   mechanically but drift in meaning and fail the guardrails often — fine for
-  testing, not for prose you care about.
+  testing, not for prose you care about. Set `OLLAMA_HOST` to use a beefier
+  machine on your LAN (e.g. `export OLLAMA_HOST=http://ollama-host.local:11434`
+  with `qwen3:32b` there — near-frontier wash quality, still fully private);
+  the pre-commit hook reads `git config voicewash.ollamahost` for the same.
 
 Plus Python 3.9+, stdlib only.
 

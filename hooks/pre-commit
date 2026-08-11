@@ -23,8 +23,8 @@ BACKEND=$(git config voicewash.backend || echo "ollama")
 CHECK=$(git config voicewash.check || true)
 
 if [ "$BACKEND" = "ollama" ]; then
-    command -v ollama >/dev/null 2>&1 || exit 0
-    curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1 || exit 0
+    OLLAMA_BASE=$(git config voicewash.ollamahost || echo "${OLLAMA_HOST:-http://localhost:11434}")
+    curl -sf --max-time 2 "$OLLAMA_BASE/api/tags" >/dev/null 2>&1 || exit 0
 elif [ "$BACKEND" = "moonshot" ]; then
     [ -n "$MOONSHOT_API_KEY" ] || exit 0
 fi

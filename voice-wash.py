@@ -33,11 +33,14 @@ headroom, e.g. `ollama pull qwen3:8b` or `ollama pull llama3.1:8b`.
 import argparse
 import difflib
 import json
+import os
 import re
 import sys
 import urllib.request
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+# Point at a remote Ollama server (e.g. a beefier machine on the LAN) with
+#   export OLLAMA_HOST=http://ollama-host.local:11434
+OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/") + "/api/generate"
 MIN_WORDS = 15
 
 PROMPT = """Rewrite the passage below as natural human prose in British English.
