@@ -138,8 +138,15 @@ def _is_washable(text):
         return False
     if s.startswith(('#', '|', '```', '>')):
         return False
-    if s.startswith('**') and ':**' in s.split('\n')[0]:
-        return False  # tracker metadata lines
+    # bold-lead blocks are tracker metadata or private working notes (status,
+    # decisions, gates) in the grants/drafts convention — never wash or upload
+    if s.startswith('**'):
+        return False
+    # list blocks are working notes in the grants/drafts convention (Q&A,
+    # checklists, gates) — submission prose is plain paragraphs. First line
+    # decides: list items here wrap onto indented continuation lines.
+    if re.match(r'\s*(?:[-*]|\d+[.)])\s', s):
+        return False
     if re.fullmatch(r'\[.*\]\(.*\)', s):
         return False
     return True
