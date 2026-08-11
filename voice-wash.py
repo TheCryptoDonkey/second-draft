@@ -40,7 +40,16 @@ import urllib.request
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MIN_WORDS = 15
 
-PROMPT = """Rewrite the following passage so it reads as natural human prose in British English, first person where the original is first person. Vary sentence length and structure; do not start consecutive sentences the same way. Keep the meaning identical. Keep every URL, number, date, name and technical term EXACTLY as written. Do not add or remove facts. Output ONLY the rewritten passage, no preamble.
+PROMPT = """Rewrite the passage below as natural human prose in British English.
+
+Voice rules:
+- British spellings: colour, organise, behaviour, programme (unless quoting code).
+- Contractions are fine. Plain words over grand ones.
+- Vary sentence length; mix short punchy sentences with longer ones.
+- NEVER use these AI tells: delve, furthermore, moreover, additionally, crucial, pivotal, vibrant, tapestry, testament, underscore, "it's worth noting", "it is important to note", "in today's", "not only ... but also", "plays a key role", "plays a vital role", "in conclusion", "navigate the complexities", "in the ever-evolving".
+- No rhetorical questions, no rule-of-three lists, no "It's not X, it's Y" constructions.
+- Keep the meaning identical. Keep every URL, number, date, name and technical term EXACTLY as written. Do not add or remove facts.
+- Output ONLY the rewritten passage. No preamble, no commentary.
 
 Passage:
 {text}"""
@@ -164,8 +173,50 @@ def protected_tokens(text):
 PROMPT_LEAK_WORDS = ('placeholder', 'opaque', 'unchanged', 'grammatical',
                      'passage', 'rewrite', 'rewritten', 'as an ai', 'zxq')
 
+# common AI-writing tells (matched case-insensitively, word-boundaried)
+AI_TELLS = re.compile(r'\b('
+    r'delve|delving|furthermore|moreover|crucial|crucially|pivotal|vibrant|'
+    r'tapestry|testament to|underscore[sd]?|showcas(?:e|ing)|boasts?|'
+    r'ever-evolving|fast-paced|cutting-edge|state-of-the-art|game-chang\w+|'
+    r'seamless(?:ly)?|robust(?:ly)?|leverag(?:e|ing)|harness(?:ing)?|'
+    r'elevate[sd]?|empower(?:s|ing)?|unlock(?:s|ing)?|foster(?:s|ing)?'
+    r')\b|'
+    r"it['’]s worth noting|it is important to note|in today['’]s|"
+    r'not only\b[^.!?]{1,80}\bbut also|plays? a (?:key|vital|crucial) role|'
+    r'navigat\w+ the complex|in conclusion,', re.I)
+
+# unambiguous American spellings (Oxford -ize is legitimate British, so excluded)
+AMERICANISMS = {
+    'color', 'colors', 'colored', 'coloring', 'favor', 'favors', 'favored',
+    'favorite', 'behavior', 'behaviors', 'honor', 'honors', 'honored',
+    'neighbor', 'neighbors', 'center', 'centers', 'centered', 'theater',
+    'theaters', 'meter', 'meters', 'liter', 'liters', 'defense', 'offense',
+    'traveling', 'traveled', 'traveler', 'travelers', 'canceled', 'canceling',
+    'gray', 'grays', 'fulfill', 'fulfillment', 'enrollment', 'jewelry',
+    'maneuver', 'maneuvers', 'pajamas', 'skeptic', 'skeptical',
+    'labor', 'labors', 'rumor', 'rumors', 'humor', 'humors', 'odor', 'odors',
+    'catalog', 'catalogs', 'plow', 'plows', 'aluminum', 'mom', 'math',
+    'sidewalk', 'sidewalks', 'apartment', 'apartments', 'vacation', 'vacations',
+    'gotten', 'zucchini', 'eggplant', 'sneakers', 'candy', 'drugstore',
+}
+
+
+def style_violations(dst, src=''):
+    """AI tells and American spellings in dst that were not present in src."""
+    problems = [m.group(0) for m in AI_TELLS.finditer(dst)
+                if m.group(0).lower() not in src.lower()]
+    words = re.findall(r"[a-z]+", dst.lower())
+    src_words = set(re.findall(r"[a-z]+", src.lower()))
+    problems += [w for w in words if w in AMERICANISMS and w not in src_words]
+    return problems
+
 
 def check_guardrail(src, dst, max_ratio=1.4):
+    if not dst:
+        return ['<empty output>']
+    norm = lambda s: re.sub(r'\s+', ' ', s).strip()
+    if norm(dst) == norm(src):
+        return ['<verbatim copy — no wash>']
     missing = [t for t in protected_tokens(src) if t not in dst]
     ratio = len(dst.split()) / max(1, len(src.split()))
     if not 0.6 <= ratio <= max_ratio:
@@ -174,6 +225,9 @@ def check_guardrail(src, dst, max_ratio=1.4):
     leaked = [w for w in PROMPT_LEAK_WORDS if w in low_dst and w not in low_src]
     if leaked:
         missing.append(f'<prompt leak: {leaked}>')
+    style = style_violations(dst, src)
+    if style:
+        missing.append(f'<style: {sorted(set(style))[:6]}>')
     return missing
 
 
@@ -197,14 +251,10 @@ def unmask_tokens(text, mapping):
 
 def paraphrase(text, model, temperature=0.4, max_ratio=1.4):
     masked, mapping = mask_tokens(text)
-    note = ("\n\nTokens like ZXQ000QXZ are opaque placeholders: copy EVERY one through "
-            "UNCHANGED, in the same position's grammatical slot. Never alter, "
-            "translate, drop or duplicate one. Output must be roughly the same "
-            "length as the input.") if mapping else ""
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
     payload = json.dumps({
         "model": model,
-        "prompt": PROMPT.format(text=masked) + note,
+        "prompt": PROMPT.format(text=masked),
         "stream": False,
         "think": False,
         "options": {"temperature": temperature, "num_predict": budget},
@@ -218,7 +268,17 @@ def paraphrase(text, model, temperature=0.4, max_ratio=1.4):
         return ""  # truncated by token budget — treat as guardrail failure
     if out.startswith('"') and out.endswith('"'):
         out = out[1:-1]
-    return unmask_tokens(out, mapping)
+    out = unmask_tokens(out, mapping)
+    # small models sometimes echo the passage verbatim then ramble: cut there
+    norm = re.sub(r'\s+', ' ', text).strip()
+    norm_out = re.sub(r'\s+', ' ', out)
+    pos = norm_out.find(norm)
+    if pos >= 0:
+        end = pos + len(norm)
+        suffix = norm_out[end:].strip()
+        if len(suffix.split()) > 5:
+            out = norm_out[:end]
+    return out
 
 
 # --- code mode: comment extraction ----------------------------------------
