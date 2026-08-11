@@ -249,23 +249,43 @@ def unmask_tokens(text, mapping):
     return text
 
 
-def paraphrase(text, model, temperature=0.4, max_ratio=1.4):
-    masked, mapping = mask_tokens(text)
-    budget = int(len(masked.split()) * max_ratio * 1.6) + 40
+def _paraphrase_ollama(masked, model, budget):
     payload = json.dumps({
         "model": model,
         "prompt": PROMPT.format(text=masked),
         "stream": False,
         "think": False,
-        "options": {"temperature": temperature, "num_predict": budget},
+        "options": {"temperature": 0.4, "num_predict": budget},
     }).encode()
     req = urllib.request.Request(OLLAMA_URL, data=payload,
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=300) as r:
         resp = json.loads(r.read())
-    out = resp["response"].strip()
     if resp.get("done_reason") == "length":
         return ""  # truncated by token budget — treat as guardrail failure
+    return resp["response"].strip()
+
+
+def _paraphrase_copilot(masked, model):
+    """Kimi K3 (or any configured model) via the Copilot CLI: not an Anthropic
+    model, so no EU-AI-Act Claude watermark; far stronger than local 1-8B."""
+    import subprocess
+    cmd = ["copilot", "-p", PROMPT.format(text=masked), "--deny-tool", "-s"]
+    if model:
+        cmd += ["--model", model]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError(f"copilot failed: {r.stderr[:200]}")
+    return r.stdout.strip()
+
+
+def paraphrase(text, model, max_ratio=1.4, backend='ollama'):
+    masked, mapping = mask_tokens(text)
+    budget = int(len(masked.split()) * max_ratio * 1.6) + 40
+    if backend == 'copilot':
+        out = _paraphrase_copilot(masked, model)
+    else:
+        out = _paraphrase_ollama(masked, model, budget)
     if out.startswith('"') and out.endswith('"'):
         out = out[1:-1]
     out = unmask_tokens(out, mapping)
@@ -360,7 +380,7 @@ def _rebuild_block(orig, new):
     return f"/*\n{inner}\n */"
 
 
-def wash_code_file(path, model, retries, yes, check_cmd, min_words):
+def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama'):
     """Wash comment blocks in one source file. Returns 'washed'|'unchanged'|'reverted'."""
     ext = '.' + path.rsplit('.', 1)[-1] if '.' in path else ''
     src = open(path).read()
@@ -373,9 +393,9 @@ def wash_code_file(path, model, retries, yes, check_cmd, min_words):
         dst = None
         for attempt in range(retries):
             try:
-                cand = paraphrase(ctext, model)
+                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend)
             except Exception as e:
-                print(f"  ollama error: {e}", file=sys.stderr)
+                print(f"  paraphrase error: {e}", file=sys.stderr)
                 break
             # comments tolerate more drift than citations: length band 2.0x
             missing = check_guardrail(ctext, cand, max_ratio=2.0)
@@ -435,7 +455,11 @@ def main():
     ap.add_argument('--code', action='store_true',
                     help='code mode: wash comments only, editing files in place')
     ap.add_argument('--check', help='command run after each file in code mode; file reverted on failure')
-    ap.add_argument('--model', default='llama3.2:1b')
+    ap.add_argument('--backend', choices=['ollama', 'copilot'], default='ollama',
+                    help="ollama = fully local; copilot = Kimi K3 etc. via Copilot CLI "
+                         "(stronger, not an Anthropic model, but text leaves the machine)")
+    ap.add_argument('--model', default=None,
+                    help='ollama: e.g. qwen3:8b (default llama3.2:1b); copilot: optional model id')
     ap.add_argument('--yes', action='store_true', help='accept all hunks without prompting')
     ap.add_argument('--out', help='output path (default: <file>.washed.md; markdown mode only)')
     ap.add_argument('--in-place', action='store_true')
@@ -443,6 +467,9 @@ def main():
     ap.add_argument('--retries', type=int, default=3,
                     help='paraphrase attempts per paragraph before keeping original')
     args = ap.parse_args()
+
+    if args.model is None:
+        args.model = 'llama3.2:1b' if args.backend == 'ollama' else ''
 
     if args.min_words is not None:
         global MIN_WORDS
@@ -462,7 +489,8 @@ def main():
         for p in paths:
             print(f"washing {p} ...", file=sys.stderr)
             stats[wash_code_file(p, args.model, args.retries, args.yes,
-                                 args.check, args.min_words or CODE_MIN_WORDS)] += 1
+                                 args.check, args.min_words or CODE_MIN_WORDS,
+                                 args.backend)] += 1
         print(f"\n{stats}", file=sys.stderr)
         return
 
@@ -477,9 +505,9 @@ def main():
         dst = None
         for attempt in range(args.retries):
             try:
-                cand = paraphrase(orig, args.model)
+                cand = paraphrase(orig, args.model, backend=args.backend)
             except Exception as e:
-                print(f"[{n}/{len(washable)}] ollama error: {e}", file=sys.stderr)
+                print(f"[{n}/{len(washable)}] paraphrase error: {e}", file=sys.stderr)
                 break
             missing = check_guardrail(orig, cand)
             if not missing:

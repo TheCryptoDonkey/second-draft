@@ -14,11 +14,19 @@ text as losing a reliable signal.
 
 ## Requirements
 
-- [Ollama](https://ollama.com) running locally
-- A capable model: `ollama pull qwen3:8b` (or `llama3.1:8b`).
-  1B-class toys (llama3.2:1b etc.) work mechanically but drift in meaning and
-  fail the guardrails often — fine for testing, not for prose you care about.
-- Python 3.9+, stdlib only.
+Either backend:
+
+- **`--backend copilot` (best quality):** the GitHub Copilot CLI (`copilot -p`,
+  silent, tools denied). Default model is the session's (e.g. Kimi K3) — not an
+  Anthropic model, so no Claude watermark, and far stronger prose than anything
+  that fits in 16GB locally. Costs Copilot AI credits per paragraph.
+- **`--backend ollama` (fully private, free):** [Ollama](https://ollama.com)
+  running locally with a capable model: `ollama pull qwen3:8b` (or
+  `llama3.1:8b`; `gpt-oss:20b` is the 16GB ceiling). 1B-class toys work
+  mechanically but drift in meaning and fail the guardrails often — fine for
+  testing, not for prose you care about.
+
+Plus Python 3.9+, stdlib only.
 
 ## Usage
 
