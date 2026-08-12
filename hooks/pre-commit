@@ -15,8 +15,8 @@
 
 [ "$VOICE_WASH" = "0" ] && exit 0
 
-VW=$(git config voicewash.path || echo "$HOME/WebstormProjects/voice-wash/voice-wash.py")
-[ -f "$VW" ] || { echo "voice-wash not found at $VW — skipping" >&2; exit 0; }
+VW=$(git config voicewash.path || true)
+[ -n "$VW" ] && [ -f "$VW" ] || { echo "voice-wash: set 'git config voicewash.path /path/to/voice-wash.py' — skipping" >&2; exit 0; }
 
 MODEL=$(git config voicewash.model || echo "qwen3:8b")
 BACKEND=$(git config voicewash.backend || echo "ollama")

@@ -1,5 +1,7 @@
 # voice-wash
 
+[![CI](https://github.com/TheCryptoDonkey/voice-wash/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCryptoDonkey/voice-wash/actions/workflows/ci.yml)
+
 Destroy statistical AI watermarks in text and code comments by paraphrasing
 through a **local, non-watermarking model** (Ollama). Nothing leaves the machine.
 
@@ -221,6 +223,15 @@ Note: if you set a global `core.hooksPath` (check with
 `git config --show-origin core.hooksPath`), git ignores `.git/hooks/` entirely
 and the symlink will never fire — your global hook must chain to the repo-local
 hook (`"$GIT_DIR/hooks/pre-commit"` at its end) for this to run.
+
+## Intended use
+
+This tool exists for privacy and hygiene on **content you own**: drafts an AI
+helped you write, destined for gatekeepers you would rather judged the words
+than the toolchain. It is not for academic fraud, misrepresenting provenance
+where disclosure is legally or contractually required, or laundering text you
+do not have the right to. The wash degrades prose somewhat by construction;
+if a context requires marked AI text, respect that context.
 
 ## Honest limitations
 

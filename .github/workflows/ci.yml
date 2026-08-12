@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile check
+        run: python -m py_compile voice-wash.py bench.py
+      - name: Unit tests
+        run: python -m unittest test_voice_wash -v
+      - name: CLI smoke (scrub, no model needed)
+        run: |
+          printf '# Title\xe2\x80\x8bword\n\n- bullet\xc2\xa0with\xc2\xa0nbsp\n' > /tmp/fixture.md
+          python voice-wash.py --scrub --yes /tmp/fixture.md --out /tmp/fixture.out.md 2>&1
+          python -c "d = open('/tmp/fixture.out.md').read(); assert all(ord(c) < 128 for c in d), 'non-ASCII remains'"
