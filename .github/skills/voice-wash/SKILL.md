@@ -1,6 +1,6 @@
 ---
 name: voice-wash
-description: Destroy statistical AI watermarks in Claude-generated prose or code comments by paraphrasing through a non-Anthropic model. Use when the user asks to "wash", "de-mark", "de-watermark" or "launder" text, markdown, grant drafts, or code comments.
+description: Destroy statistical AI watermarks in Claude-generated prose or code comments by paraphrasing through a non-Anthropic model. Use when the user asks to "wash", "de-mark", "de-watermark" or "launder" text, markdown, drafts, or code comments.
 ---
 
 # voice-wash
@@ -59,8 +59,8 @@ faster). Do not pull other models without a bench run: `bench.py`.
 
 ## Hard rules
 
-1. **Never wash working notes.** Only plain submission paragraphs in
-   grants/drafts files are candidates; bold-lead blocks, lists, headers and
+1. **Never wash working notes.** Only plain publishable paragraphs in
+   drafts files are candidates; bold-lead blocks, lists, headers and
    code are already excluded. If in doubt, wash less.
 2. **Never use a Claude model as the paraphrase engine** — that re-marks the
    text, defeating the entire purpose.

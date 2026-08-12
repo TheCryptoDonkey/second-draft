@@ -57,8 +57,8 @@ Do not pull or substitute other local models without a bench run: `bench.py`.
 ## Hard rules
 
 1. **Never wash working notes.** The tool already excludes bold-lead blocks,
-   lists, headers and code, but if you are washing a grants/drafts file, only
-   the plain submission paragraphs are candidates. If in doubt, wash less.
+   lists, headers and code, but if you are washing a drafts file, only
+   the plain publishable paragraphs are candidates. If in doubt, wash less.
 2. **Never use a Claude model as the paraphrase engine** — that re-marks the
    text, defeating the entire purpose.
 3. **Never commit the washed file over the original** without the user's

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """bench: measure how close a wash config gets to K3-quality, objectively.
 
-Runs a fixed set of real grant paragraphs through candidate configurations,
+Runs a fixed set of real prose paragraphs through candidate configurations,
 then scores each output on:
   - guardrail pass (facts/citations/style rules)        [hard gate]
   - novelty: 1 - trigram Jaccard vs source              [restructuring boldness]

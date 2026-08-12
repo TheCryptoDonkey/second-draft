@@ -62,8 +62,8 @@ ollama pull qwen3:8b                          # local + free
 # or: nothing - --backend copilot uses the Copilot CLI you already have
 
 # 2. wash a draft
-python3 voice-wash.py draft.md                # interactive: review each hunk
-less draft.washed.md                          # default output is a sibling file
+python3 voice-wash.py draft.md --model qwen3:8b   # interactive: review each hunk
+less draft.washed.md                              # default output is a sibling file
 ```
 
 First run tip: use a paragraph or two of real text and read every proposed
@@ -86,34 +86,29 @@ hunk. You will quickly learn what your chosen model does to your voice.
 | `--code` | off | wash comments in source files instead of markdown |
 | `--check CMD` | none | code mode: run CMD after each file, auto-revert on failure |
 
-## How we use it
+## A sane pipeline
 
-The pipeline for anything an AI helped write that will be read by a human
-gatekeeper (grant applications, public docs, outreach):
+For anything an AI helped write that will be read by humans:
 
-1. **Draft** - AI-assisted, in the grants workspace
-   (`grants/drafts/`). Facts, numbers, citations and structure
-   are settled here; the wash never touches them (the guardrails enforce
-   this).
+1. **Draft** - AI-assisted, in your own workspace. Facts, numbers, citations
+   and structure are settled here; the wash never touches them (the
+   guardrails enforce this).
 2. **Wash** - this tool, interactive mode, every hunk read:
    ```sh
-   export OLLAMA_HOST=http://ollama-host.local:11434
-   python3 voice-wash.py grants/drafts/G36-hrf-relayswarm.md --model qwen3:32b --bestof 3
+   export OLLAMA_HOST=http://ollama-host.local:11434   # optional LAN box
+   python3 voice-wash.py draft.md --model qwen3:32b --bestof 3
    ```
-   That recipe (qwen3:32b on the LAN box, best-of-3) is the measured
-   ceiling - see the bench table below. Interactive, not `--yes`, for
-   anything that leaves the building.
-3. **Voice pass** - a human reads the result aloud. The spec for what
-   "sounds like us" means lives at
-   `grants/references/voice-guide.md`; the wash gets prose 80%
-   there, the read-aloud catches the rest. This step is not optional for
-   submissions.
-4. **Submit** - only after steps 2 and 3, in that order. Washing after
+   That recipe (qwen3:32b, best-of-3) is the measured ceiling - see the
+   bench table below. Interactive, not `--yes`, for anything that matters.
+3. **Voice pass** - a human reads the result aloud. The wash gets prose
+   most of the way there; the read-aloud catches the rest. This step is
+   not optional for anything you put your name on.
+4. **Publish** - only after steps 2 and 3, in that order. Washing after
    the voice pass would re-mark the human's edits, so the order matters.
 
-Working notes and private strategy docs (anything under a "DO NOT PASTE"
-line) are never submitted, so washing them is wasted effort - the script
-already skips their metadata lines, and short bullets fall under the
+Working notes (metadata lines, short bullets, anything under a "DO NOT
+PASTE" line) are never published, so washing them is wasted effort - the
+script already skips metadata lines, and short bullets fall under the
 15-word floor anyway.
 
 For code, the hook does it continuously: each repo symlinks
@@ -126,7 +121,7 @@ marked text never enters history.
 ### Markdown / prose
 
 ```sh
-python3 voice-wash.py grants/drafts/G36-hrf-relayswarm.md          # interactive hunk review
+python3 voice-wash.py draft.md                                     # interactive hunk review
 python3 voice-wash.py FILE --model qwen3:8b --yes --in-place       # batch
 python3 voice-wash.py FILE --scrub ...                             # also strip invisible Unicode (below)
 ```
@@ -151,7 +146,7 @@ compiler-checked renames (ts-morph, rust-analyzer) for identifiers.
 ## Tuning (measured, not vibes — see bench.py)
 
 `bench.py` scores configs on guardrail pass-rate, trigram novelty vs source,
-and a K3 judge score. Current standings on the grant-prose test set (K3
+and a K3 judge score. Current standings on the prose test set (K3
 itself: novelty 0.80, judge 8.0):
 
 | config | guardrail | novelty | judge |
@@ -161,7 +156,6 @@ itself: novelty 0.80, judge 8.0):
 | qwen3:32b --bestof 3 --polish | 4/4 | 0.79 | 6.8 |
 | gemma3:27b plain | 3/4 | 0.68 | 4.2 |
 | gemma3:27b --bestof 3 | 4/4 | 0.93 | 5.8 |
-| llama3.3:70b (64GB host) | 0/4 | timed out | — |
 
 Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose):
 
@@ -227,8 +221,8 @@ hook (`"$GIT_DIR/hooks/pre-commit"` at its end) for this to run.
 ## Intended use
 
 This tool exists for privacy and hygiene on **content you own**: drafts an AI
-helped you write, destined for gatekeepers you would rather judged the words
-than the toolchain. It is not for academic fraud, misrepresenting provenance
+helped you write, which you would rather were judged as words than as
+toolchain output. It is not for academic fraud, misrepresenting provenance
 where disclosure is legally or contractually required, or laundering text you
 do not have the right to. The wash degrades prose somewhat by construction;
 if a context requires marked AI text, respect that context.
@@ -250,6 +244,12 @@ What this tool can and cannot claim, separated plainly:
   model's; voice flattens and meaning occasionally drifts, especially with
   small models. Use interactive mode for anything important and read every
   hunk. If quality matters more than hygiene, skip the wash entirely.
+- **Structure-heavy documents wash badly.** The guardrails check tokens,
+  length and style, not markdown structure; on documents that weave prose
+  through numbered lists and tables, a model can merge list items or mangle
+  a lead sentence while still passing every guardrail (we know: it happened
+  to an earlier draft of this README). The wash is built for flowing prose
+  paragraphs; treat anything structural as read-only.
 - Text generated by pre-2-Aug-2026 models was never marked; washing it is
   harmless but unnecessary.
 

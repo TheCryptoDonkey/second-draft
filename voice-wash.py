@@ -7,11 +7,11 @@ This script uses a local Ollama model: private (drafts never leave the machine) 
 unwatermarked. A human reviews every hunk, because small local models are clumsy.
 
 Usage:
-  python3 scripts/voice-wash.py grants/drafts/G36-hrf-relayswarm.md
-  python3 scripts/voice-wash.py FILE --model qwen3.5:0.8b --yes --out out.md
+  python3 voice-wash.py draft.md
+  python3 voice-wash.py FILE --model qwen3:8b --yes --out out.md
 
   # code mode: wash comments across many files, gated by the repo's own tests
-  python3 scripts/voice-wash.py --code --check "npm test" src/**/*.mjs
+  python3 voice-wash.py --code --check "npm test" src/**/*.mjs
 
 Code mode only ever rewrites COMMENT text (//, /* */, #) — never code. After each
 file it runs --check CMD (e.g. the test suite) and auto-reverts the file on
@@ -161,11 +161,11 @@ def _is_washable(text):
     if s.startswith(('#', '|', '```', '>')):
         return False
     # bold-lead blocks are tracker metadata or private working notes (status,
-    # decisions, gates) in the grants/drafts convention — never wash or upload
+    # decisions, gates) in the working-notes convention — never wash or upload
     if s.startswith('**'):
         return False
-    # list blocks are working notes in the grants/drafts convention (Q&A,
-    # checklists, gates) — submission prose is plain paragraphs. First line
+    # list blocks are working notes in the drafts convention (Q&A,
+    # checklists, gates) — publishable prose is plain paragraphs. First line
     # decides: list items here wrap onto indented continuation lines.
     if re.match(r'\s*(?:[-*]|\d+[.)])\s', s):
         return False
@@ -517,6 +517,33 @@ def rank_candidates_judged(src, cands, model):
     return best if best_score > 0 else rank_candidates(src, cands)
 
 
+_backend_checked = False
+
+
+def check_backend_available(backend, model):
+    """Fail fast with an actionable message instead of per-hunk HTTP tracebacks.
+    Called lazily on the first paraphrase so model-free runs (e.g. a file with
+    no washable paragraphs, or --scrub-only cleanups) never demand a backend."""
+    if backend == 'ollama':
+        base = OLLAMA_URL.rsplit('/api/', 1)[0]
+        try:
+            with urllib.request.urlopen(base + '/api/tags', timeout=5) as r:
+                tags = {m.get('name', '') for m in json.loads(r.read()).get('models', [])}
+        except Exception:
+            return (f"cannot reach ollama at {base} — start it (`ollama serve`) or "
+                    "set OLLAMA_HOST, or use --backend copilot / --backend moonshot")
+        if model and not any(t == model or t == model + ':latest' for t in tags):
+            return f"model '{model}' not pulled — run: ollama pull {model}"
+    elif backend == 'copilot':
+        import shutil
+        if not shutil.which('copilot'):
+            return "copilot CLI not found — install GitHub Copilot CLI or use --backend ollama"
+    elif backend == 'moonshot':
+        if not os.environ.get('MOONSHOT_API_KEY'):
+            return "MOONSHOT_API_KEY not set — create a key at https://platform.kimi.ai"
+    return None
+
+
 def _generate_once(masked, model, budget, backend, temperature=None):
     if backend == 'copilot':
         return _paraphrase_copilot(masked, model)
@@ -527,6 +554,12 @@ def _generate_once(masked, model, budget, backend, temperature=None):
 
 def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, bestof=1,
                judge_rank=False):
+    global _backend_checked
+    if not _backend_checked:
+        _backend_checked = True
+        problem = check_backend_available(backend, model)
+        if problem:
+            raise RuntimeError(problem)
     masked, mapping = mask_tokens(text)
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
     temps = [None] if bestof <= 1 else [0.4, 0.7, 0.9, 1.0, 0.55][:bestof]
@@ -762,7 +795,7 @@ def main():
         MIN_WORDS = args.min_words
 
     if args.code:
-        import glob as globmod, os
+        import glob as globmod
         supported = set(LINE_COMMENT_RE) | {'.c', '.h', '.cpp', '.java', '.sh'}
         paths = []
         for f in args.files:
@@ -834,7 +867,7 @@ def main():
         elif c == 'n':
             rejected += 1
         elif c == 'e':
-            import os, subprocess, tempfile
+            import subprocess, tempfile
             with tempfile.NamedTemporaryFile('w+', suffix='.md', delete=False) as tf:
                 tf.write(dst)
                 path = tf.name
@@ -851,11 +884,18 @@ def main():
         open(args.files[0], 'w').write(out)
         dest = args.files[0]
     else:
-        dest = args.out or args.files[0].replace('.md', '.washed.md')
+        stem, dot, ext = args.files[0].rpartition('.')
+        # never let the default output equal the input (e.g. an extensionless file)
+        default = f"{stem}.washed.{ext}" if dot else args.files[0] + '.washed'
+        dest = args.out or default
+        if os.path.abspath(dest) == os.path.abspath(args.files[0]):
+            print(f"refusing to overwrite {dest}: pass --in-place if you mean it",
+                  file=sys.stderr)
+            return 1
         open(dest, 'w').write(out)
     print(f"\naccepted={accepted} rejected={rejected} guardrail-kept={kept}", file=sys.stderr)
     print(f"wrote {dest}", file=sys.stderr)
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main() or 0)

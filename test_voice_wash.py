@@ -176,6 +176,24 @@ class TestCommentExtraction(unittest.TestCase):
         self.assertNotIn('compute', spans[0][3])
 
 
+class TestOutputPath(unittest.TestCase):
+    """The default output name must never equal the input (silent overwrite)."""
+
+    def _default_dest(self, path):
+        stem, dot, ext = path.rpartition('.')
+        return f"{stem}.washed.{ext}" if dot else path + '.washed'
+
+    def test_markdown(self):
+        self.assertEqual(self._default_dest('draft.md'), 'draft.washed.md')
+
+    def test_other_extension(self):
+        self.assertEqual(self._default_dest('notes.txt'), 'notes.washed.txt')
+
+    def test_extensionless(self):
+        dest = self._default_dest('README')
+        self.assertNotEqual(dest, 'README')
+
+
 class TestHelpers(unittest.TestCase):
     def test_trigram_novelty_bounds(self):
         a = 'the quick brown fox jumps over the lazy dog again today'
