@@ -36,7 +36,9 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import urllib.request
+from collections import Counter
 
 # Point at a remote Ollama server (e.g. a beefier machine on the LAN) with
 #   export OLLAMA_HOST=http://ollama-host.local:11434
@@ -276,6 +278,67 @@ def normalize_style(text):
     for a, b in (('’', "'"), ('‘', "'"), ('“', '"'), ('”', '"')):
         text = text.replace(a, b)
     return text
+
+
+# --- Layer A: invisible-Unicode scrub --------------------------------------
+# Statistical watermarks are the headline threat, but edit-based schemes hide
+# signals in invisible/format characters too: zero-width spaces and joiners,
+# bidi overrides, tag characters, variation selectors, exotic space
+# homoglyphs. These codepoints are all standard Unicode (categories Cf/Mn);
+# none of them belong in ASCII prose. --scrub removes or normalises them in a
+# deterministic pre-pass before any model is involved.
+
+# invisible format controls (Unicode category Cf and friends)
+SCRUB_STRIP = frozenset({
+    0x00AD,                        # soft hyphen
+    0x034F,                        # combining grapheme joiner
+    0x061C,                        # Arabic letter mark
+    0x115F, 0x1160,                # Hangul fillers
+    0x17B4, 0x17B5,                # Khmer vowel inherents
+    0x180B, 0x180C, 0x180D,        # Mongolian free variation selectors
+    0x180E,                        # Mongolian vowel separator
+    0x200B, 0x200C, 0x200D,        # ZWSP, ZWNJ, ZWJ
+    0x200E, 0x200F,                # LRM, RLM
+    0x202A, 0x202B, 0x202C, 0x202D, 0x202E,  # bidi embedding/override
+    0x2060, 0x2061, 0x2062, 0x2063, 0x2064,  # word joiner, invisible operators
+    0x2066, 0x2067, 0x2068, 0x2069,          # bidi isolates
+    0x206A, 0x206B, 0x206C, 0x206D, 0x206E, 0x206F,  # deprecated format chars
+    0xFEFF,                        # BOM / zero-width no-break space
+    *range(0xFE00, 0xFE10),        # variation selectors 1-16
+    0xFFF9, 0xFFFA, 0xFFFB,        # interlinear annotations
+})
+
+# spaces that render like U+0020 but aren't
+SCRUB_SPACES = {
+    0x00A0, 0x1680, *range(0x2000, 0x200B), 0x202F, 0x205F, 0x3000,
+}
+
+
+def _is_scrub_strip(cp):
+    return (cp in SCRUB_STRIP
+            or 0xE0001 <= cp <= 0xE007F      # tag characters
+            or 0xE0100 <= cp <= 0xE01EF)     # variation selectors 17-256
+
+
+def scrub_unicode(text):
+    """Strip invisible Unicode carriers and normalise exotic spaces.
+    Returns (cleaned_text, report_lines). Pure-ASCII input passes through
+    byte-identical with an empty report."""
+    removed, replaced = Counter(), Counter()
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        if _is_scrub_strip(cp) or unicodedata.category(ch) == 'Cf':
+            removed[f"U+{cp:04X} {unicodedata.name(ch, '<unnamed>')}"] += 1
+        elif cp in SCRUB_SPACES:
+            replaced[f"U+{cp:04X} {unicodedata.name(ch, '<unnamed>')}"] += 1
+            out.append(' ')
+        else:
+            out.append(ch)
+    report = [f"  scrub: stripped {n}x {label}" for label, n in sorted(removed.items())]
+    report += [f"  scrub: normalised {n}x {label} -> space"
+               for label, n in sorted(replaced.items())]
+    return ''.join(out), report
 
 
 def check_guardrail(src, dst, max_ratio=1.4):
@@ -685,6 +748,10 @@ def main():
                     help='generate K candidates at varied temperatures, keep the best (bench: best config)')
     ap.add_argument('--retries', type=int, default=3,
                     help='paraphrase attempts per paragraph before keeping original')
+    ap.add_argument('--scrub', action='store_true',
+                    help='deterministic pre-pass: strip invisible Unicode carriers '
+                         '(zero-width chars, bidi controls, tag chars, variation '
+                         'selectors) and normalise exotic spaces before washing')
     args = ap.parse_args()
 
     if args.model is None:
@@ -707,6 +774,12 @@ def main():
         stats = {'washed': 0, 'unchanged': 0, 'reverted': 0}
         for p in paths:
             print(f"washing {p} ...", file=sys.stderr)
+            if args.scrub:
+                raw = open(p).read()
+                cleaned, report = scrub_unicode(raw)
+                if report:
+                    open(p, 'w').write(cleaned)
+                    print('\n'.join(report), file=sys.stderr)
             stats[wash_code_file(p, args.model, args.retries, args.yes,
                                  args.check, args.min_words or CODE_MIN_WORDS,
                                  args.backend, args.polish, args.bestof)] += 1
@@ -714,6 +787,12 @@ def main():
         return
 
     src = open(args.files[0]).read()
+    if args.scrub:
+        src, report = scrub_unicode(src)
+        if report:
+            print('\n'.join(report), file=sys.stderr)
+        else:
+            print("scrub: no invisible Unicode found", file=sys.stderr)
     blocks = split_blocks(src)
     washable = [i for i, (w, _) in enumerate(blocks) if w]
     print(f"{len(blocks)} blocks, {len(washable)} washable paragraphs", file=sys.stderr)

@@ -22,6 +22,9 @@ python3 voice-wash.py path/to/file.md
 # prose, batch mode (agent use — no human at the keyboard)
 python3 voice-wash.py --yes path/to/file.md        # writes file.washed.md
 
+# also strip invisible Unicode carriers (zero-width, bidi, tag chars) first
+python3 voice-wash.py --scrub --yes path/to/file.md
+
 # code comments across many files (edits in place, test-gated)
 python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
 ```
@@ -29,7 +32,10 @@ python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
 (overwrite the source; default writes `<file>.washed.md`), `--bestof 3`
 (generate 3 candidates, keep the best — the measured quality lever),
-`--retries N`, `--min-words N`.
+`--retries N`, `--min-words N`, `--scrub` (deterministic pre-pass that strips
+invisible Unicode carriers: zero-width chars, bidi controls, tag characters,
+variation selectors; normalises exotic spaces; whole file, no model involved;
+pure-ASCII input passes through byte-identical).
 
 ## Choosing a backend
 
@@ -45,9 +51,8 @@ The ollama backend may point at a remote server:
 (ping it first), the laptop is asleep or off-network — fall back to
 `--backend copilot`.** Do not burn more than ~100 credits without asking.
 
-Model choice on ollama: `qwen3:32b` is the benchmarked default for washing
-(bold restructuring). `muse-glimmer:30b-mlx` is the "gentle wash" (minimal
-drift, faster). Do not pull other models without a bench run: `bench.py`.
+Model choice on ollama: use the benchmarked `qwen3:32b --bestof 3` recipe.
+Do not pull or substitute other local models without a bench run: `bench.py`.
 
 ## Hard rules
 

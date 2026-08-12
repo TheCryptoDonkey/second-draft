@@ -81,6 +81,7 @@ marked text never enters history.
 ```sh
 python3 voice-wash.py grants/drafts/G36-hrf-relayswarm.md          # interactive hunk review
 python3 voice-wash.py FILE --model qwen3:8b --yes --in-place       # batch
+python3 voice-wash.py FILE --scrub ...                             # also strip invisible Unicode (below)
 ```
 
 Only prose paragraphs (≥15 words) are touched. Headers, frontmatter, code
@@ -123,18 +124,9 @@ Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose):
 | qwen3:32b --bestof 3 | 8/8 | 0.83 | **7.8** |
 | qwen3:32b --bestof 3 (judge-ranked) | 8/8 | 0.83 | 7.8 |
 | qwen3:32b --bestof 5 (judge-ranked) | 8/8 | 0.80 | 7.6 |
-| muse-glimmer:30b-mlx plain | 8/8 | 0.54 | 7.4 |
-| muse-glimmer:30b-mlx --bestof 3 | 8/8 | 0.62 | 7.8 |
 
 best-of-3 heuristic ranking remains the ceiling; local self-judging adds
 nothing and wider sampling (bestof5) invites outliers.
-
-muse-glimmer (Meta's 30B agentic MLX model) ties qwen3:32b on voice (7.8)
-but restructures far less boldly (novelty 0.62 vs 0.83). Since novelty IS
-the point of watermark destruction, qwen3:32b stays the default; muse-glimmer
-is the better pick when you want a gentle, minimal-drift wash. Note: it burns
-priming tokens before emitting, so the ollama backend now escalates
-num_predict on empty 'length' stops (needed for this model).
 
 Takeaways: best-of-K sampling is the winning lever (nearly closes the novelty
 gap to K3); the polish pass *flattens* voice — judge score drops. gemma3:27b
@@ -151,6 +143,19 @@ that matters, and it is also the quality winner. Recommended local recipe:
 - length must stay within a band of the original (1.4× prose, 2× comments)
 - no repeated sentences, no truncated outputs, no prompt-instruction leakage
 - failure = retry (default 3), then the original is kept
+
+## Layer A: invisible-Unicode scrub (`--scrub`)
+
+The paraphrase pass destroys statistical (token-choice) marks, but edit-based
+schemes hide signals in invisible characters instead: zero-width spaces and
+joiners, bidi overrides, tag characters (U+E0001-E007F), variation selectors,
+soft hyphens, and exotic spaces that render like U+0020 (no-break, em, thin,
+ideographic). `--scrub` is a deterministic pre-pass (no model involved) that
+strips those carriers and normalises exotic spaces to plain ASCII spaces,
+across the whole file (headers, code and all), reporting every removal to
+stderr. Pure-ASCII input passes through byte-identical. It works in both prose
+and `--code` mode; in code mode the file is scrubbed in place before comments
+are washed.
 
 ## Pre-commit hook
 
