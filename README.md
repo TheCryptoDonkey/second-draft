@@ -88,9 +88,18 @@ Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose):
 | qwen3:32b --bestof 3 | 8/8 | 0.83 | **7.8** |
 | qwen3:32b --bestof 3 (judge-ranked) | 8/8 | 0.83 | 7.8 |
 | qwen3:32b --bestof 5 (judge-ranked) | 8/8 | 0.80 | 7.6 |
+| muse-glimmer:30b-mlx plain | 8/8 | 0.54 | 7.4 |
+| muse-glimmer:30b-mlx --bestof 3 | 8/8 | 0.62 | 7.8 |
 
 best-of-3 heuristic ranking remains the ceiling; local self-judging adds
 nothing and wider sampling (bestof5) invites outliers.
+
+muse-glimmer (Meta's 30B agentic MLX model) ties qwen3:32b on voice (7.8)
+but restructures far less boldly (novelty 0.62 vs 0.83). Since novelty IS
+the point of watermark destruction, qwen3:32b stays the default; muse-glimmer
+is the better pick when you want a gentle, minimal-drift wash. Note: it burns
+priming tokens before emitting, so the ollama backend now escalates
+num_predict on empty 'length' stops (needed for this model).
 
 Takeaways: best-of-K sampling is the winning lever (nearly closes the novelty
 gap to K3); the polish pass *flattens* voice — judge score drops. gemma3:27b

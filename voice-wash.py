@@ -317,21 +317,27 @@ def unmask_tokens(text, mapping):
 
 
 def _paraphrase_ollama(masked, model, budget, prompt=None, temperature=None):
-    payload = json.dumps({
-        "model": model,
-        "prompt": (prompt or PROMPT).format(text=masked),
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.4 if temperature is None else temperature,
-                    "num_predict": budget},
-    }).encode()
-    req = urllib.request.Request(OLLAMA_URL, data=payload,
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        resp = json.loads(r.read())
-    if resp.get("done_reason") == "length":
-        return ""  # truncated by token budget — treat as guardrail failure
-    return resp["response"].strip()
+    # some models burn tokens on priming before emitting; escalate the budget
+    # until we get a real stop, up to 4 attempts
+    for attempt in range(4):
+        payload = json.dumps({
+            "model": model,
+            "prompt": (prompt or PROMPT).format(text=masked),
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.4 if temperature is None else temperature,
+                        "num_predict": budget},
+        }).encode()
+        req = urllib.request.Request(OLLAMA_URL, data=payload,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=300) as r:
+            resp = json.loads(r.read())
+        if resp.get("done_reason") != "length":
+            return resp["response"].strip()
+        if resp["response"].strip():
+            return ""  # truncated mid-text — treat as guardrail failure
+        budget *= 3
+    return ""
 
 
 def _paraphrase_copilot(masked, model, prompt=None):
