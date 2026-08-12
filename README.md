@@ -39,6 +39,41 @@ Either backend:
 
 Plus Python 3.9+, stdlib only.
 
+## How we use it
+
+The pipeline for anything an AI helped write that will be read by a human
+gatekeeper (grant applications, public docs, outreach):
+
+1. **Draft** - AI-assisted, in the grants workspace
+   (`grants/drafts/`). Facts, numbers, citations and structure
+   are settled here; the wash never touches them (the guardrails enforce
+   this).
+2. **Wash** - this tool, interactive mode, every hunk read:
+   ```sh
+   export OLLAMA_HOST=http://ollama-host.local:11434
+   python3 voice-wash.py grants/drafts/G36-hrf-relayswarm.md --model qwen3:32b --bestof 3
+   ```
+   That recipe (qwen3:32b on the LAN box, best-of-3) is the measured
+   ceiling - see the bench table below. Interactive, not `--yes`, for
+   anything that leaves the building.
+3. **Voice pass** - a human reads the result aloud. The spec for what
+   "sounds like us" means lives at
+   `grants/references/voice-guide.md`; the wash gets prose 80%
+   there, the read-aloud catches the rest. This step is not optional for
+   submissions.
+4. **Submit** - only after steps 2 and 3, in that order. Washing after
+   the voice pass would re-mark the human's edits, so the order matters.
+
+Working notes and private strategy docs (anything under a "DO NOT PASTE"
+line) are never submitted, so washing them is wasted effort - the script
+already skips their metadata lines, and short bullets fall under the
+15-word floor anyway.
+
+For code, the hook does it continuously: each repo symlinks
+`hooks/pre-commit`, sets `voicewash.model` and (where tests exist)
+`voicewash.check`, and staged comments are washed at commit time so
+marked text never enters history.
+
 ## Usage
 
 ### Markdown / prose
