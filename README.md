@@ -238,7 +238,7 @@ git config seconddraft.check "npm test"   # optional but recommended
 ```
 
 Hooks are non-interactive so it runs `--yes` — the guardrails + `--check` are
-the safety net. Skip one commit with `VOICE_WASH=0 git commit ...`.
+the safety net. Skip one commit with `SECOND_DRAFT=0 git commit ...`.
 If Ollama isn't running, the hook silently passes.
 
 Note: if you set a global `core.hooksPath` (check with

@@ -5,7 +5,7 @@ deliberately untested (they are thin HTTP/CLI adapters), while every guardrail,
 scrub, block-splitting and comment-extraction rule IS tested, because those
 are what make a bad rewrite safe.
 
-Run: python3 -m pytest test_voice_wash.py   (or: python3 -m unittest)
+Run: python3 -m pytest test_second_draft.py   (or: python3 -m unittest)
 """
 
 import importlib.util
