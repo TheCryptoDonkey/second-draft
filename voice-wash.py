@@ -20,6 +20,7 @@ commit per file for bisectability. Identifiers and formatting are NOT touched
 here: use the repo formatter and compiler-checked renames for those layers.
 
 Blocks skipped (never rewritten): frontmatter, fenced code, headers, tables,
+lists (including their indented continuation paragraphs), blockquotes,
 link-only lines, tracker metadata lines (**Key:** value), and anything < 15 words.
 Guardrail: every URL, number and capitalised token in the source paragraph must
 survive verbatim in the rewrite, and the rewrite must be within 0.6-1.4x the
@@ -140,6 +141,14 @@ def split_blocks(text):
                 blocks.extend(_flush(cur))
                 cur = []
             blocks.append((False, ''))
+        elif re.match(r'\s*(?:[-*+]|\d+[.)])\s', line):
+            # list items start a new block even without a preceding blank line;
+            # otherwise a continuation paragraph followed by list items becomes
+            # one washable block and the model merges the items into prose
+            if cur:
+                blocks.extend(_flush(cur))
+                cur = []
+            cur.append(line)
         else:
             cur.append(line)
         i += 1
@@ -167,7 +176,11 @@ def _is_washable(text):
     # list blocks are working notes in the drafts convention (Q&A,
     # checklists, gates) — publishable prose is plain paragraphs. First line
     # decides: list items here wrap onto indented continuation lines.
-    if re.match(r'\s*(?:[-*]|\d+[.)])\s', s):
+    if re.match(r'\s*(?:[-*+]|\d+[.)])\s', s):
+        return False
+    # indented first line = continuation paragraph of a list item (markdown
+    # renders it as part of the item); not standalone prose, never wash
+    if text[0] in ' \t':
         return False
     if re.fullmatch(r'\[.*\]\(.*\)', s):
         return False

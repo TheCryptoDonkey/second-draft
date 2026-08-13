@@ -84,6 +84,33 @@ class TestSplitBlocks(unittest.TestCase):
         blocks = vw.split_blocks(text)
         self.assertEqual(blocks, [(False, text)])
 
+    def test_list_breaks_block_without_blank_line(self):
+        # regression: a prose run-on into a numbered list must not become one
+        # washable block — the model merged the items into prose when it was
+        text = ('A prose paragraph with plenty of words to qualify as washable\n'
+                'and then more of the same to be safe here today\n'
+                '3. **Voice pass** - a human reads the result aloud\n'
+                '4. **Publish** - only after the earlier steps, in order\n')
+        blocks = vw.split_blocks(text)
+        washable = [t for w, t in blocks if w]
+        self.assertEqual(len(washable), 1)
+        self.assertNotIn('Voice pass', washable[0])
+        self.assertNotIn('Publish', washable[0])
+
+    def test_numbered_and_bulleted_lists_not_washable(self):
+        for item in ('1. First item with plenty of words in it to pass the floor easily',
+                     '- bullet item with plenty of words in it to pass the floor easily',
+                     '* star item with plenty of words in it to pass the floor easily',
+                     '+ plus item with plenty of words in it to pass the floor easily'):
+            blocks = vw.split_blocks(item)
+            self.assertEqual(blocks, [(False, item)], item)
+
+    def test_indented_continuation_paragraph_not_washable(self):
+        text = ('   That recipe shows the measured ceiling for the whole setup;\n'
+                '   check the bench table below for the full details today.')
+        blocks = vw.split_blocks(text)
+        self.assertTrue(all(not w for w, _ in blocks))
+
 
 class TestProtectedTokens(unittest.TestCase):
     def test_urls_numbers_names(self):
