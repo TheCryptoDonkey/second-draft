@@ -43,7 +43,9 @@ python3 second-draft.py --code --check "npm test" 'src/**/*.mjs'
 
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
 (overwrite source; default writes a sibling `.washed.md`), `--bestof 5`
-(quality lever — generate 3 candidates, keep best), `--retries N`,
+(quality lever — generate 5 candidates, keep best), `--verify` (backend
+confirms each candidate preserves meaning; default on for ollama),
+`--scrub` (strip invisible Unicode carriers first), `--retries N`,
 `--min-words N`.
 
 ## Backends
@@ -54,9 +56,8 @@ Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
 | `copilot` | Best quality; ~4.5 Copilot AI credits per paragraph | `--backend copilot` |
 | `moonshot` | Cheapest at volume; needs `MOONSHOT_API_KEY` in env | `--backend moonshot` |
 
-Model choice on ollama: `qwen3:32b` is the benchmarked default (bold
-restructuring). `muse-glimmer:30b-mlx` is the "gentle wash" (minimal drift,
-faster). Do not pull other models without a bench run: `bench.py`.
+Model choice on ollama: use the benchmarked `qwen3:32b --bestof 5` recipe.
+Do not pull or substitute other local models without a bench run: `bench.py`.
 
 ## Hard rules
 
@@ -77,7 +78,7 @@ faster). Do not pull other models without a bench run: `bench.py`.
 Report: hunks accepted / guardrail-kept, which backend and model were used,
 credit or time cost, and show 2-3 before/after paragraph pairs so the user can
 judge voice. Tell the user to do a final read-aloud pass — it is part of the
-pipeline and the last watermark-killer.
+pipeline and the last line of defence.
 
 ## House style (enforced automatically, but know it)
 

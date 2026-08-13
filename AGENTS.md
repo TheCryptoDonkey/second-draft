@@ -31,7 +31,7 @@ python3 second-draft.py --code --check "npm test" 'src/**/*.mjs'
 
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
 (overwrite the source; default writes `<file>.washed.md`), `--bestof 5`
-(generate 3 candidates, keep the best — the measured quality lever),
+(generate 5 candidates, keep the best — the measured quality lever),
 `--retries N`, `--min-words N`, `--verify`/`--no-verify` (backend checks each
 candidate preserves meaning; default on for ollama, off for paid backends),
 `--scrub` (deterministic pre-pass that strips
@@ -75,7 +75,7 @@ Do not pull or substitute other local models without a bench run: `bench.py`.
 Report: hunks accepted / guardrail-kept, which backend and model were used,
 credit or time cost, and show 2-3 before/after paragraph pairs so the user
 can judge voice. The user's final read-aloud pass is part of the pipeline —
-tell them to do it; it is also the last watermark-killer.
+tell them to do it; it is also the last line of defence.
 
 ## House style (enforced automatically, but know it)
 
