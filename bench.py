@@ -16,7 +16,7 @@ import importlib.util
 import re
 import sys
 
-spec = importlib.util.spec_from_file_location('vw', 'voice-wash.py')
+spec = importlib.util.spec_from_file_location('vw', 'second-draft.py')
 vw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vw)
 

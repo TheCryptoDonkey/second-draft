@@ -1,18 +1,25 @@
-# voice-wash
+# second-draft
 
-[![CI](https://github.com/TheCryptoDonkey/voice-wash/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCryptoDonkey/voice-wash/actions/workflows/ci.yml)
+[![CI](https://github.com/TheCryptoDonkey/second-draft/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCryptoDonkey/second-draft/actions/workflows/ci.yml)
 
-Destroy statistical AI watermarks in text and code comments by paraphrasing
-through a **local, non-watermarking model** (Ollama). Nothing leaves the machine.
+Your AI draft's second draft. second-draft rewrites AI-assisted prose and
+code comments into a natural human voice by paraphrasing through a **local,
+non-origin model** (Ollama). Guardrails keep every fact, URL, number and
+name intact; a deterministic scrub strips invisible Unicode. Nothing leaves
+the machine.
 
-## Why
+## Background
 
-Claude models launched in the EU on/after 2 Aug 2026 weave an imperceptible
-watermark into generated text at the token-choice level (per Anthropic's EU AI
-Act Article 50(2) commitments). It survives copy-paste and some editing; there
-are no hidden characters to grep for and no public detector. Paraphrasing is the
-documented kill switch — Anthropic itself lists "heavily edited, paraphrased"
-text as losing a reliable signal.
+Every model has a fingerprint: characteristic token choices, sentence
+rhythms, favourite words. Models launched in the EU on/after 2 Aug 2026 go
+further and deliberately weave an imperceptible statistical mark into
+generated text (per EU AI Act Article 50(2) commitments). It survives
+copy-paste and some editing; there are no hidden characters to grep for and
+no public detector. Paraphrasing through a *different* model replaces those
+patterns with the rewriting model's — Anthropic itself lists "heavily
+edited, paraphrased" text as losing the signal. second-draft automates that
+paraphrase with the guardrails to make it safe, and keeps the human
+read-aloud pass where it belongs: with you.
 
 ## Requirements
 
@@ -37,16 +44,16 @@ Either backend:
   testing, not for prose you care about. Set `OLLAMA_HOST` to use a beefier
   machine on your LAN (e.g. `export OLLAMA_HOST=http://ollama-host.local:11434`
   with `qwen3:32b` there — near-frontier wash quality, still fully private);
-  the pre-commit hook reads `git config voicewash.ollamahost` for the same.
+  the pre-commit hook reads `git config seconddraft.ollamahost` for the same.
 
 Plus Python 3.9+, stdlib only.
 
 ## Install
 
 ```sh
-git clone https://github.com/TheCryptoDonkey/voice-wash.git
-cd voice-wash
-chmod +x voice-wash.py        # optional; `python3 voice-wash.py` works either way
+git clone https://github.com/TheCryptoDonkey/second-draft.git
+cd second-draft
+chmod +x second-draft.py        # optional; `python3 second-draft.py` works either way
 ```
 
 There is nothing to build and no dependencies to install; the script is a
@@ -62,7 +69,7 @@ ollama pull qwen3:8b                          # local + free
 # or: nothing - --backend copilot uses the Copilot CLI you already have
 
 # 2. wash a draft
-python3 voice-wash.py draft.md --model qwen3:8b   # interactive: review each hunk
+python3 second-draft.py draft.md --model qwen3:8b   # interactive: review each hunk
 less draft.washed.md                              # default output is a sibling file
 ```
 
@@ -97,7 +104,7 @@ For anything an AI helped write that will be read by humans:
 2. **Wash** - this tool, interactive mode, every hunk read:
    ```sh
    export OLLAMA_HOST=http://ollama-host.local:11434   # optional LAN box
-   python3 voice-wash.py draft.md --model qwen3:32b --bestof 5
+   python3 second-draft.py draft.md --model qwen3:32b --bestof 5
    ```
    That recipe (qwen3:32b, best-of-3) is the measured ceiling - see the
    bench table below. Interactive, not `--yes`, for anything that matters.
@@ -113,8 +120,8 @@ script already skips metadata lines, and short bullets fall under the
 15-word floor anyway.
 
 For code, the hook does it continuously: each repo symlinks
-`hooks/pre-commit`, sets `voicewash.model` and (where tests exist)
-`voicewash.check`, and staged comments are washed at commit time so
+`hooks/pre-commit`, sets `seconddraft.model` and (where tests exist)
+`seconddraft.check`, and staged comments are washed at commit time so
 marked text never enters history.
 
 ## Usage
@@ -122,9 +129,9 @@ marked text never enters history.
 ### Markdown / prose
 
 ```sh
-python3 voice-wash.py draft.md                                     # interactive hunk review
-python3 voice-wash.py FILE --model qwen3:8b --yes --in-place       # batch
-python3 voice-wash.py FILE --scrub ...                             # also strip invisible Unicode (below)
+python3 second-draft.py draft.md                                     # interactive hunk review
+python3 second-draft.py FILE --model qwen3:8b --yes --in-place       # batch
+python3 second-draft.py FILE --scrub ...                             # also strip invisible Unicode (below)
 ```
 
 Only plain prose paragraphs (≥15 words) are touched. Headers, frontmatter,
@@ -134,7 +141,7 @@ lines pass through byte-identical.
 ### Code (many files)
 
 ```sh
-python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
+python3 second-draft.py --code --check "npm test" 'src/**/*.mjs'
 ```
 
 Only whole-line `//`, `#` and `/* */` comment text is rewritten — never code.
@@ -224,8 +231,10 @@ Wash staged content at commit time so marked text never enters history:
 ```sh
 ln -s "$PWD/hooks/pre-commit" /path/to/your-repo/.git/hooks/pre-commit
 cd /path/to/your-repo
-git config voicewash.model qwen3:8b
-git config voicewash.check "npm test"   # optional but recommended
+git config seconddraft.path /path/to/second-draft/second-draft.py
+git config seconddraft.model qwen3:8b
+git config seconddraft.check "npm test"   # optional but recommended
+# (legacy voicewash.* keys are still honoured by the hook)
 ```
 
 Hooks are non-interactive so it runs `--yes` — the guardrails + `--check` are

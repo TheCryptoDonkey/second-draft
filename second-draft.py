@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""voice-wash: destroy statistical AI watermarks in markdown prose by paraphrasing.
+"""second-draft: give AI-assisted prose a human second draft, in your voice.
 
-Statistical watermarks (e.g. Claude's post-2-Aug-2026 model-level text marks) live in
-token/word choice. Paraphrasing through a NON-watermarking model breaks the signal.
-This script uses a local Ollama model: private (drafts never leave the machine) and
-unwatermarked. A human reviews every hunk, because small local models are clumsy.
+Rewrites markdown prose by paraphrasing through a NON-origin model — a local
+Ollama model by default, so drafts never leave the machine. AI-generated text
+carries statistical patterns from the model that wrote it (post-2-Aug-2026 EU
+models embed them deliberately, per the EU AI Act); paraphrasing through a
+different vendor's model replaces those patterns with its own, and the
+guardrails make sure nothing else changes. A human reviews every hunk,
+because small local models are clumsy.
 
 Usage:
-  python3 voice-wash.py draft.md
-  python3 voice-wash.py FILE --model qwen3:8b --yes --out out.md
+  python3 second-draft.py draft.md
+  python3 second-draft.py FILE --model qwen3:8b --yes --out out.md
 
   # code mode: wash comments across many files, gated by the repo's own tests
-  python3 voice-wash.py --code --check "npm test" src/**/*.mjs
+  python3 second-draft.py --code --check "npm test" src/**/*.mjs
 
 Code mode only ever rewrites COMMENT text (//, /* */, #) — never code. After each
 file it runs --check CMD (e.g. the test suite) and auto-reverts the file on

@@ -1,16 +1,17 @@
 ---
-name: voice-wash
-description: Destroy statistical AI watermarks in Claude-generated prose or code comments by paraphrasing through a non-Anthropic model. Use when the user asks to "wash", "de-mark", "de-watermark" or "launder" text, markdown, drafts, or code comments.
+name: second-draft
+description: Give AI-assisted drafts a human second draft. Paraphrase prose, markdown or code comments through a non-origin model (Ollama/Copilot/Kimi) so the text reads as natural human writing in the user's voice. Use when the user asks to "wash", restyle, humanise, rephrase or give a second draft to text, markdown, drafts, or code comments.
 ---
 
-# voice-wash
+# second-draft
 
-Paraphrase text through a NON-Anthropic model to destroy the statistical
-watermark Claude models (EU launches on/after 2 Aug 2026) weave into generated
-text. The tool never detects watermarks; it assumes marked input and destroys
-the signal by rewriting. Guardrails reject any rewrite that drops a URL,
+Paraphrase text through a NON-origin model so AI-assisted drafts read as
+natural human prose. Post-2-Aug-2026 EU models embed statistical patterns
+deliberately (EU AI Act); rewriting through a different vendor's model
+replaces those patterns. Guardrails reject any rewrite that drops a URL,
 number, name or technical term, drifts too far in length, echoes the prompt,
-or introduces AI-tell phrases / American spellings — the original is kept.
+fails the meaning check, or introduces AI-tell phrases / American
+spellings — the original is kept.
 
 ## Environment
 
@@ -26,18 +27,18 @@ host is unreachable the laptop is asleep or off-network — fall back to
 
 ## Commands
 
-Run from wherever the voice-wash repo is checked out (the directory
-containing voice-wash.py).
+Run from wherever the second-draft repo is checked out (the directory
+containing second-draft.py).
 
 ```sh
 # prose — interactive hunk review (PREFERRED for anything important)
-python3 voice-wash.py path/to/file.md --model qwen3:32b --bestof 5
+python3 second-draft.py path/to/file.md --model qwen3:32b --bestof 5
 
 # prose, batch mode (no human at the keyboard) — writes file.washed.md
-python3 voice-wash.py --yes --model qwen3:32b --bestof 5 path/to/file.md
+python3 second-draft.py --yes --model qwen3:32b --bestof 5 path/to/file.md
 
 # code comments across many files (edits in place, test-gated)
-python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
+python3 second-draft.py --code --check "npm test" 'src/**/*.mjs'
 ```
 
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`

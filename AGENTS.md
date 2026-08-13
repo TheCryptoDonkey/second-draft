@@ -1,32 +1,32 @@
-# AGENTS.md — how an LLM agent should use voice-wash
+# AGENTS.md — how an LLM agent should use second-draft
 
-You are an agent asked to "wash" text (remove statistical AI watermarks from
-Claude-generated prose or code comments). This file is your operating manual.
+You are an agent asked to "wash" text (restyle AI-generated prose or code
+comments into natural human writing). This file is your operating manual.
 
 ## What this tool does
 
-voice-wash paraphrases text through a NON-Anthropic model to destroy the
-statistical watermark Claude models (launched in the EU on/after 2 Aug 2026)
-weave into generated text. It never detects watermarks — it assumes marked
-input and destroys the signal by rewriting. Guardrails make failures safe:
+second-draft paraphrases text through a NON-origin model so AI-assisted
+drafts read as natural human prose. Post-2-Aug-2026 EU models embed
+statistical patterns deliberately (EU AI Act); rewriting through a different
+vendor's model replaces those patterns. Guardrails make failures safe:
 any rewrite that drops a URL, number, name or technical term, drifts too far
-in length, echoes the prompt, or introduces AI-tell phrases / American
-spellings is rejected and the original is kept.
+in length, echoes the prompt, fails the meaning check, or introduces
+AI-tell phrases / American spellings is rejected and the original is kept.
 
 ## Command reference
 
 ```sh
 # prose (markdown) — interactive hunk review (PREFERRED for anything important)
-python3 voice-wash.py path/to/file.md
+python3 second-draft.py path/to/file.md
 
 # prose, batch mode (agent use — no human at the keyboard)
-python3 voice-wash.py --yes path/to/file.md        # writes file.washed.md
+python3 second-draft.py --yes path/to/file.md        # writes file.washed.md
 
 # also strip invisible Unicode carriers (zero-width, bidi, tag chars) first
-python3 voice-wash.py --scrub --yes path/to/file.md
+python3 second-draft.py --scrub --yes path/to/file.md
 
 # code comments across many files (edits in place, test-gated)
-python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
+python3 second-draft.py --code --check "npm test" 'src/**/*.mjs'
 ```
 
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`

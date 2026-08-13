@@ -1,4 +1,4 @@
-"""Tests for voice-wash's deterministic logic.
+"""Tests for second-draft's deterministic logic.
 
 Everything here runs without a model or network: the paraphrase backends are
 deliberately untested (they are thin HTTP/CLI adapters), while every guardrail,
@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
-    'voice_wash', Path(__file__).with_name('voice-wash.py'))
+    'voice_wash', Path(__file__).with_name('second-draft.py'))
 vw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vw)
 
