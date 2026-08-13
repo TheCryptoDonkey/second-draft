@@ -19,7 +19,7 @@ jobs:
       - name: Compile check
         run: python -m py_compile second-draft.py bench.py
       - name: Unit tests
-        run: python -m unittest test_voice_wash -v
+        run: python -m unittest test_second_draft -v
       - name: CLI smoke (scrub, no model needed)
         run: |
           printf '# Title\xe2\x80\x8bword\n\n- bullet\xc2\xa0with\xc2\xa0nbsp\n' > /tmp/fixture.md
