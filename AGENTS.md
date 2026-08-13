@@ -30,7 +30,7 @@ python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
 ```
 
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
-(overwrite the source; default writes `<file>.washed.md`), `--bestof 3`
+(overwrite the source; default writes `<file>.washed.md`), `--bestof 5`
 (generate 3 candidates, keep the best — the measured quality lever),
 `--retries N`, `--min-words N`, `--verify`/`--no-verify` (backend checks each
 candidate preserves meaning; default on for ollama, off for paid backends),
@@ -43,7 +43,7 @@ pure-ASCII input passes through byte-identical).
 
 | Backend | When | Command bits |
 |---|---|---|
-| `ollama` (default) | Always try first. Free, unlimited, private | `--model qwen3:32b --bestof 3` |
+| `ollama` (default) | Always try first. Free, unlimited, private | `--model qwen3:32b --bestof 5` |
 | `copilot` | Best quality; costs ~4.5 Copilot AI credits per paragraph | `--backend copilot` |
 | `moonshot` | Cheapest at volume; needs `MOONSHOT_API_KEY` in env | `--backend moonshot` |
 
@@ -53,7 +53,7 @@ The ollama backend may point at a remote server:
 (ping it first), the laptop is asleep or off-network — fall back to
 `--backend copilot`.** Do not burn more than ~100 credits without asking.
 
-Model choice on ollama: use the benchmarked `qwen3:32b --bestof 3` recipe.
+Model choice on ollama: use the benchmarked `qwen3:32b --bestof 5` recipe.
 Do not pull or substitute other local models without a bench run: `bench.py`.
 
 ## Hard rules

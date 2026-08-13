@@ -31,17 +31,17 @@ containing voice-wash.py).
 
 ```sh
 # prose — interactive hunk review (PREFERRED for anything important)
-python3 voice-wash.py path/to/file.md --model qwen3:32b --bestof 3
+python3 voice-wash.py path/to/file.md --model qwen3:32b --bestof 5
 
 # prose, batch mode (no human at the keyboard) — writes file.washed.md
-python3 voice-wash.py --yes --model qwen3:32b --bestof 3 path/to/file.md
+python3 voice-wash.py --yes --model qwen3:32b --bestof 5 path/to/file.md
 
 # code comments across many files (edits in place, test-gated)
 python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
 ```
 
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
-(overwrite source; default writes a sibling `.washed.md`), `--bestof 3`
+(overwrite source; default writes a sibling `.washed.md`), `--bestof 5`
 (quality lever — generate 3 candidates, keep best), `--retries N`,
 `--min-words N`.
 
@@ -49,7 +49,7 @@ Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
 
 | Backend | When | Command bits |
 |---|---|---|
-| `ollama` (default) | Always try first. Free, unlimited, private | `--model qwen3:32b --bestof 3` |
+| `ollama` (default) | Always try first. Free, unlimited, private | `--model qwen3:32b --bestof 5` |
 | `copilot` | Best quality; ~4.5 Copilot AI credits per paragraph | `--backend copilot` |
 | `moonshot` | Cheapest at volume; needs `MOONSHOT_API_KEY` in env | `--backend moonshot` |
 

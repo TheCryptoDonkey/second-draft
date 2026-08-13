@@ -97,7 +97,7 @@ For anything an AI helped write that will be read by humans:
 2. **Wash** - this tool, interactive mode, every hunk read:
    ```sh
    export OLLAMA_HOST=http://ollama-host.local:11434   # optional LAN box
-   python3 voice-wash.py draft.md --model qwen3:32b --bestof 3
+   python3 voice-wash.py draft.md --model qwen3:32b --bestof 5
    ```
    That recipe (qwen3:32b, best-of-3) is the measured ceiling - see the
    bench table below. Interactive, not `--yes`, for anything that matters.
@@ -159,7 +159,8 @@ itself: novelty 0.80, judge 8.0):
 | gemma3:27b plain | 3/4 | 0.68 | 4.2 |
 | gemma3:27b --bestof 3 | 4/4 | 0.93 | 5.8 |
 
-Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose):
+Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose).
+First generation of experiments:
 
 | config | guardrail | novelty | judge |
 |---|---|---|---|
@@ -168,17 +169,28 @@ Expanded 8-paragraph set (adds narrative, claims, pricing, punchy prose):
 | qwen3:32b --bestof 3 (judge-ranked) | 8/8 | 0.83 | 7.8 |
 | qwen3:32b --bestof 5 (judge-ranked) | 8/8 | 0.80 | 7.6 |
 
-best-of-3 heuristic ranking remains the ceiling; local self-judging adds
-nothing and wider sampling (bestof5) invites outliers.
+Second generation, after `--verify` landed (re-measured; run-to-run variance
+is real, the champ's novelty moved 0.83 to 0.80 on a re-run):
 
-Takeaways: best-of-K sampling is the winning lever (nearly closes the novelty
-gap to K3); the polish pass *flattens* voice — judge score drops. gemma3:27b
-over-rewrites (novelty 0.93 vs K3's 0.80) but the voice suffers; llama3.3:70b
-thrashes a 64GB host into the compressor and never finished a generation
-(removed; 42GB of weights needs more headroom than 64GB total RAM).
-qwen3:32b wins on taste AND fits comfortably — it is the hardware ceiling
-that matters, and it is also the quality winner. Recommended local recipe:
-`--backend ollama --model qwen3:32b --bestof 3`.
+| config | guardrail | novelty | judge |
+|---|---|---|---|
+| qwen3:32b --bestof 3 (champ re-run) | 8/8 | 0.80 | 7.8 |
+| qwen3:32b --bestof 3 --verify | 8/8 | 0.84 | 7.8 |
+| qwen3:32b --bestof 5 --verify | 8/8 | 0.83 | **8.2** |
+| qwen3:32b --bestof 8 --verify | 8/8 | 0.87 | 8.0 |
+| qwen3:32b --bestof 3 --verify --judgerank | 8/8 | 0.72 | 8.1 |
+
+Takeaways: best-of-K sampling is the winning lever; `--verify` costs nothing
+in quality and filters meaning drift, which unblocks bestof5 (without verify
+it invited outliers and lost; with verify it beats K3's own 8.0 reference).
+bestof8 pushes novelty to 0.87 but the judge score falls back — wider than
+5 re-invites outliers even with verification. Local self-judging (judgerank)
+kills novelty every time; rejected. The polish pass *flattens* voice.
+gemma3:27b over-rewrites (novelty 0.93) but the voice suffers; llama3.3:70b
+thrashes a 64GB host into the compressor and never finished a generation.
+Recommended local recipe:
+`--backend ollama --model qwen3:32b --bestof 5` (verify is on by default
+for ollama).
 
 ## Guardrails (every hunk, both modes)
 

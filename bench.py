@@ -65,10 +65,11 @@ def judge(src, dst):
 def main():
     use_judge = '--no-judge' not in sys.argv
     configs = [
-        ('qwen3:32b plain', dict(model='qwen3:32b')),
-        ('qwen3:32b bestof3', dict(model='qwen3:32b', bestof=3)),
-        ('qwen3:32b bestof3+judgerank', dict(model='qwen3:32b', bestof=3, judge_rank=True)),
-        ('qwen3:32b bestof5+judgerank', dict(model='qwen3:32b', bestof=5, judge_rank=True)),
+        ('qwen3:32b bestof3 (champ)', dict(model='qwen3:32b', bestof=3)),
+        ('qwen3:32b bestof3+verify', dict(model='qwen3:32b', bestof=3, verify=True)),
+        ('qwen3:32b bestof5+verify', dict(model='qwen3:32b', bestof=5, verify=True)),
+        ('qwen3:32b bestof3+verify+judgerank', dict(model='qwen3:32b', bestof=3, verify=True, judge_rank=True)),
+        ('qwen3:32b bestof8+verify', dict(model='qwen3:32b', bestof=8, verify=True)),
     ]
     print(f"{'config':<28} {'guard':>6} {'novelty':>8} {'judge':>6}")
     for name, kw in configs:

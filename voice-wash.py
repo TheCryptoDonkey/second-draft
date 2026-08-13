@@ -603,7 +603,7 @@ def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, besto
             raise RuntimeError(problem)
     masked, mapping = mask_tokens(text)
     budget = int(len(masked.split()) * max_ratio * 1.6) + 40
-    temps = [None] if bestof <= 1 else [0.4, 0.7, 0.9, 1.0, 0.55][:bestof]
+    temps = [None] if bestof <= 1 else [0.4, 0.7, 0.9, 1.0, 0.55, 0.8, 0.3, 1.1][:bestof]
     cands = []
     for t in temps:
         out = _generate_once(masked, model, budget, backend, temperature=t)
