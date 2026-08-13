@@ -32,7 +32,9 @@ python3 voice-wash.py --code --check "npm test" 'src/**/*.mjs'
 Key flags: `--yes` batch-accept (guardrails still apply), `--in-place`
 (overwrite the source; default writes `<file>.washed.md`), `--bestof 3`
 (generate 3 candidates, keep the best — the measured quality lever),
-`--retries N`, `--min-words N`, `--scrub` (deterministic pre-pass that strips
+`--retries N`, `--min-words N`, `--verify`/`--no-verify` (backend checks each
+candidate preserves meaning; default on for ollama, off for paid backends),
+`--scrub` (deterministic pre-pass that strips
 invisible Unicode carriers: zero-width chars, bidi controls, tag characters,
 variation selectors; normalises exotic spaces; whole file, no model involved;
 pure-ASCII input passes through byte-identical).

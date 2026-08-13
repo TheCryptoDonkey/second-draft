@@ -557,16 +557,44 @@ def check_backend_available(backend, model):
     return None
 
 
-def _generate_once(masked, model, budget, backend, temperature=None):
+def _generate_once(masked, model, budget, backend, temperature=None, prompt=None):
     if backend == 'copilot':
-        return _paraphrase_copilot(masked, model)
+        return _paraphrase_copilot(masked, model, prompt=prompt)
     if backend == 'moonshot':
-        return _paraphrase_moonshot(masked, model, budget)
-    return _paraphrase_ollama(masked, model, budget, temperature=temperature)
+        return _paraphrase_moonshot(masked, model, budget, prompt=prompt)
+    return _paraphrase_ollama(masked, model, budget, prompt=prompt, temperature=temperature)
+
+
+VERIFY_PROMPT = """Passage A:
+{a}
+
+Passage B:
+{b}
+
+Does Passage B state exactly the same facts as Passage A: same meaning, nothing added, nothing omitted, no claim reversed or inverted? Answer YES or NO and nothing else."""
+
+
+def verify_meaning(src, dst, model, backend):
+    """Entailment check: the backend judges whether dst preserves src's meaning.
+    A wrong answer drops the candidate (guardrail failure); a backend ERROR keeps
+    it (availability beats caution — the token/length/style guardrails still ran).
+    """
+    q = VERIFY_PROMPT.format(a=src, b=dst)
+    try:
+        out = _generate_once(q, model, 8, backend, prompt='{text}')
+    except Exception as e:
+        print(f"  verify error (keeping candidate): {e}", file=sys.stderr)
+        return True
+    m = re.search(r'\b(yes|no)\b', out.strip().lower())
+    if not m:
+        print(f"  verify unparseable ({out.strip()[:40]!r}) — dropping candidate",
+              file=sys.stderr)
+        return False
+    return m.group(1) == 'yes'
 
 
 def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, bestof=1,
-               judge_rank=False):
+               judge_rank=False, verify=False):
     global _backend_checked
     if not _backend_checked:
         _backend_checked = True
@@ -594,6 +622,8 @@ def paraphrase(text, model, max_ratio=1.4, backend='ollama', polish=False, besto
         out = normalize_style(out)
         if out and not check_guardrail(text, out, max_ratio=max_ratio):
             cands.append(out)
+    if verify:
+        cands = [c for c in cands if verify_meaning(text, c, model, backend)]
     if not cands:
         out = ''
     elif judge_rank and backend == 'ollama' and len(cands) > 1:
@@ -703,7 +733,7 @@ def _rebuild_block(orig, new):
     return f"/*\n{inner}\n */"
 
 
-def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama', polish=False, bestof=1):
+def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='ollama', polish=False, bestof=1, verify=False):
     """Wash comment blocks in one source file. Returns 'washed'|'unchanged'|'reverted'."""
     ext = '.' + path.rsplit('.', 1)[-1] if '.' in path else ''
     src = open(path).read()
@@ -716,7 +746,7 @@ def wash_code_file(path, model, retries, yes, check_cmd, min_words, backend='oll
         dst = None
         for attempt in range(retries):
             try:
-                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend, polish=polish, bestof=bestof)
+                cand = paraphrase(ctext, model, max_ratio=2.0, backend=backend, polish=polish, bestof=bestof, verify=verify)
             except Exception as e:
                 print(f"  paraphrase error: {e}", file=sys.stderr)
                 break
@@ -798,6 +828,10 @@ def main():
                     help='deterministic pre-pass: strip invisible Unicode carriers '
                          '(zero-width chars, bidi controls, tag chars, variation '
                          'selectors) and normalise exotic spaces before washing')
+    ap.add_argument('--verify', dest='verify', action='store_true', default=None,
+                    help='backend double-checks each candidate preserves meaning '
+                         '(default: on for ollama — free; off for paid backends)')
+    ap.add_argument('--no-verify', dest='verify', action='store_false')
     args = ap.parse_args()
 
     if args.model is None:
@@ -806,6 +840,8 @@ def main():
     if args.min_words is not None:
         global MIN_WORDS
         MIN_WORDS = args.min_words
+
+    verify = args.verify if args.verify is not None else args.backend == 'ollama'
 
     if args.code:
         import glob as globmod
@@ -828,7 +864,7 @@ def main():
                     print('\n'.join(report), file=sys.stderr)
             stats[wash_code_file(p, args.model, args.retries, args.yes,
                                  args.check, args.min_words or CODE_MIN_WORDS,
-                                 args.backend, args.polish, args.bestof)] += 1
+                                 args.backend, args.polish, args.bestof, verify)] += 1
         print(f"\n{stats}", file=sys.stderr)
         return
 
@@ -849,7 +885,7 @@ def main():
         dst = None
         for attempt in range(args.retries):
             try:
-                cand = paraphrase(orig, args.model, backend=args.backend, polish=args.polish, bestof=args.bestof)
+                cand = paraphrase(orig, args.model, backend=args.backend, polish=args.polish, bestof=args.bestof, verify=verify)
             except Exception as e:
                 print(f"[{n}/{len(washable)}] paraphrase error: {e}", file=sys.stderr)
                 break

@@ -221,6 +221,59 @@ class TestOutputPath(unittest.TestCase):
         self.assertNotEqual(dest, 'README')
 
 
+class TestVerifyMeaning(unittest.TestCase):
+    """The entailment stage: candidates the backend says drifted must drop."""
+
+    def setUp(self):
+        self._orig_gen = vw._generate_once
+        vw._backend_checked = True  # skip availability probe; we mock the backend
+
+    def tearDown(self):
+        vw._generate_once = self._orig_gen
+
+    def test_yes_no_parsing(self):
+        vw._generate_once = lambda *a, **k: 'YES'
+        self.assertTrue(vw.verify_meaning('a', 'b', 'm', 'ollama'))
+        vw._generate_once = lambda *a, **k: 'No, it changes a claim.'
+        self.assertFalse(vw.verify_meaning('a', 'b', 'm', 'ollama'))
+
+    def test_unparseable_drops(self):
+        vw._generate_once = lambda *a, **k: '<think> hmm'
+        self.assertFalse(vw.verify_meaning('a', 'b', 'm', 'ollama'))
+
+    def test_backend_error_keeps_candidate(self):
+        def boom(*a, **k):
+            raise RuntimeError('connection refused')
+        vw._generate_once = boom
+        self.assertTrue(vw.verify_meaning('a', 'b', 'm', 'ollama'))
+
+    def test_paraphrase_drops_inverted_candidate(self):
+        src = ('Destroy statistical AI watermarks in text and code comments by '
+               'paraphrasing through a local model on the machine itself today.')
+        inverted = ('Destroy uses statistical AI to add watermarks in text and '
+                    'code comments by paraphrasing through a local model today.')
+
+        def fake_gen(masked, model, budget, backend, temperature=None, prompt=None):
+            return inverted if prompt is None else 'NO'  # verify says: drifted
+
+        vw._generate_once = fake_gen
+        out = vw.paraphrase(src, 'm', verify=True)
+        self.assertEqual(out, '')  # all candidates failed verify -> keep original
+
+    def test_paraphrase_keeps_verified_candidate(self):
+        src = ('Destroy statistical AI watermarks in text and code comments by '
+               'paraphrasing through a local model on the machine itself today.')
+        good = ('Destroy statistical AI watermarks from text and code comments by '
+                'paraphrasing through a local model right on the machine itself.')
+
+        def fake_gen(masked, model, budget, backend, temperature=None, prompt=None):
+            return good if prompt is None else 'YES'
+
+        vw._generate_once = fake_gen
+        out = vw.paraphrase(src, 'm', verify=True)
+        self.assertTrue(out)  # verify passed -> candidate returned
+
+
 class TestHelpers(unittest.TestCase):
     def test_trigram_novelty_bounds(self):
         a = 'the quick brown fox jumps over the lazy dog again today'
